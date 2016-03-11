@@ -397,13 +397,48 @@ int main( int argc, char** argv )
   trace.endBlock();
 
   //-----------------------------------------------------------------------------
-  // Defining Discrete Calculus.
+  // Moving normals on vertices.
   typedef CubicalComplex< KSpace >                                 CComplex;
+  trace.beginBlock( "Moving normals on vertices." );
+  std::map< Cell, RealVector > vtx_normals;
+  std::map< Cell, int >        nb_faces;
+  // Use a cubical complex to find all lower incident cells easily.
+  CComplex complex( K );
+  for ( ConstIterator it = digSurf.begin(), itE = digSurf.end(); it != itE; ++it )
+    complex.insertCell( 2, K.unsigns( *it ) );
+  complex.close();
+  for ( CComplex::CellMapIterator it = complex.begin( 0 ), itE = complex.end( 0 ); it != itE; ++it )
+    {
+      vtx_normals[ it->first ] = RealVector( 0.0, 0.0, 0.0 );
+      nb_faces   [ it->first ] = 0;
+    }
+  for ( ConstIterator it = digSurf.begin(), itE = digSurf.end(); it != itE; ++it )
+    {
+      SCell surfel = *it;
+      CComplex::Cells faces = complex.cellBoundary( K.unsigns( surfel ), true );
+      for ( CComplex::Cells::ConstIterator itF = faces.begin(), itFE = faces.end(); itF != itFE; ++itF )
+        {
+          Cell cell = *itF;
+          if ( K.uDim( cell ) == 0 ) 
+            {
+              vtx_normals[ cell ] += n_estimations[ surfel ];
+              nb_faces   [ cell ] += 1; 
+            }
+        }
+    }
+  for ( CComplex::CellMapIterator it = complex.begin( 0 ), itE = complex.end( 0 ); it != itE; ++it )
+    vtx_normals[ it->first ] /= (double) nb_faces[ it->first ];
+  trace.endBlock();
+
+
+  //-----------------------------------------------------------------------------
+  // Defining Discrete Calculus.
   typedef DiscreteExteriorCalculus<2,3, EigenLinearAlgebraBackend> Calculus;
   typedef Calculus::Index                                          Index;
   typedef Calculus::PrimalForm0                                    PrimalForm0;
   typedef Calculus::PrimalForm1                                    PrimalForm1;
   typedef Calculus::PrimalForm2                                    PrimalForm2;
+  typedef Calculus::DualForm0                                      DualForm0;
   typedef Calculus::PrimalIdentity0                                PrimalIdentity0;
   typedef Calculus::PrimalIdentity1                                PrimalIdentity1;
   typedef Calculus::PrimalIdentity2                                PrimalIdentity2;
@@ -411,23 +446,12 @@ int main( int argc, char** argv )
   Calculus calculus;
   calculus.initKSpace<Domain>( domain );
   const KSpace& Kc = calculus.myKSpace; // should not be used.
-  // Use a cubical complex to find all lower incident cells easily.
-  CComplex complex( K );
-  for ( ConstIterator it = digSurf.begin(), itE = digSurf.end(); it != itE; ++it )
-    complex.insertCell( 2, K.unsigns( *it ) );
-  complex.close();
   for ( CComplex::CellMapIterator it = complex.begin( 0 ), itE = complex.end( 0 ); it != itE; ++it )
     calculus.insertSCell( K.signs( it->first, K.POS ) );
   
   for ( CComplex::CellMapIterator it = complex.begin( 1 ), itE = complex.end( 1 ); it != itE; ++it )
-    {
-      SCell     linel = K.signs( it->first, K.POS );
-      Dimension k     = * K.sDirs( linel );
-      bool      pos   = K.sDirect( linel, k );
-      calculus.insertSCell( pos ? linel : K.sOpp( linel ) );
-      // calculus.insertSCell( K.signs( it->first, K.POS ) );
-    }
-
+    calculus.insertSCell( K.signs( it->first, K.POS ) );
+  
   // for ( CComplex::CellMapIterator it = complex.begin( 2 ), itE = complex.end( 2 ); it != itE; ++it )
   // calculus.insertSCell( K.signs( it->first, K.POS ) );
   for ( ConstIterator it = digSurf.begin(), itE = digSurf.end(); it != itE; ++it )
@@ -441,32 +465,21 @@ int main( int argc, char** argv )
   calculus.updateIndexes();
   trace.info() << calculus << endl;
 
-  std::vector<PrimalForm2> g;
+  std::vector<PrimalForm0> g;
   g.reserve( 3 );
-  g.push_back( PrimalForm2( calculus ) );
-  g.push_back( PrimalForm2( calculus ) );
-  g.push_back( PrimalForm2( calculus ) );
-  Index nb2 = g[ 0 ].myContainer.rows();
-  
-  for ( Index index = 0; index < nb2; index++)
+  g.push_back( PrimalForm0( calculus ) );
+  g.push_back( PrimalForm0( calculus ) );
+  g.push_back( PrimalForm0( calculus ) );
+  Index nb0 = g[ 0 ].myContainer.rows();
+  for ( Index index = 0; index < nb0; index++)
     {
-      const Calculus::SCell& cell = g[ 0 ].getSCell( index );
-      if ( theSetOfSurfels.isInside( cell ) ) 
-        {
-          const RealVector&      n    = n_estimations[ cell ];
-          g[ 0 ].myContainer( index ) = n[ 0 ];
-          g[ 1 ].myContainer( index ) = n[ 1 ];
-          g[ 2 ].myContainer( index ) = n[ 2 ];
-        }
-      else
-        {
-          const RealVector&      n    = n_estimations[ K.sOpp( cell ) ];
-          g[ 0 ].myContainer( index ) = n[ 0 ];
-          g[ 1 ].myContainer( index ) = n[ 1 ];
-          g[ 2 ].myContainer( index ) = n[ 2 ];
-        }
+      const Calculus::SCell& scell = g[ 0 ].getSCell( index );
+      const Cell             vtx   = K.unsigns( scell );
+      const RealVector&      n     = vtx_normals[ vtx ];
+      g[ 0 ].myContainer( index ) = n[ 0 ];
+      g[ 1 ].myContainer( index ) = n[ 1 ];
+      g[ 2 ].myContainer( index ) = n[ 2 ];
     }
-  cout << endl;
   trace.info() << "primal_D0" << endl;
   const Calculus::PrimalDerivative0 	primal_D0 = calculus.derivative<0,PRIMAL>();
   trace.info() << "primal_D1" << endl;
@@ -481,6 +494,8 @@ int main( int argc, char** argv )
   const Calculus::PrimalHodge1  	primal_h1 = calculus.hodge<1,PRIMAL>();
   trace.info() << "primal_h2" << endl;
   const Calculus::PrimalHodge2     	primal_h2 = calculus.hodge<2,PRIMAL>();
+  trace.info() << "dual_h0" << endl;
+  const Calculus::DualHodge0         	dual_h0   = calculus.hodge<0,DUAL>();
   trace.info() << "dual_h1" << endl;
   const Calculus::DualHodge1         	dual_h1   = calculus.hodge<1,DUAL>();
   trace.info() << "dual_h2" << endl;
@@ -496,7 +511,7 @@ int main( int argc, char** argv )
 
   // u = g at the beginning
   trace.info() << "u[0,1,2]" << endl;
-  std::vector<PrimalForm2> u;
+  std::vector<PrimalForm0> u;
   u.push_back( g[ 0 ] ); u.push_back( g[ 1 ] ); u.push_back( g[ 2 ] );
   // v = 1 at the beginning
   trace.info() << "v" << endl;
@@ -508,11 +523,11 @@ int main( int argc, char** argv )
   const PrimalIdentity2 Id2 = calculus.identity<2, PRIMAL>();
   // Building alpha_
   trace.info() << "alpha_g" << endl;
-  const PrimalIdentity2 alpha_Id2 = a * Id2; // a * invG0;
-  vector<PrimalForm2> alpha_g;
-  alpha_g.push_back( alpha_Id2 * g[ 0 ] );
-  alpha_g.push_back( alpha_Id2 * g[ 1 ] );
-  alpha_g.push_back( alpha_Id2 * g[ 2 ] );
+  const PrimalIdentity0 alpha_Id0 = a * Id0; // a * invG0;
+  vector<PrimalForm0> alpha_g;
+  alpha_g.push_back( alpha_Id0 * g[ 0 ] );
+  alpha_g.push_back( alpha_Id0 * g[ 1 ] );
+  alpha_g.push_back( alpha_Id0 * g[ 2 ] );
   trace.info() << "lap_operator_v" << endl;
   const PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 
                                                   + dual_h1 * dual_D0 * primal_h2 * primal_D1 );
@@ -521,7 +536,7 @@ int main( int argc, char** argv )
   // typedef EigenLinearAlgebraBackend::SolverSparseQR LinearAlgebraSolver;
   // typedef EigenLinearAlgebraBackend::SolverSparseLU LinearAlgebraSolver;
   typedef EigenLinearAlgebraBackend::SolverSimplicialLLT LinearAlgebraSolver;
-  typedef DiscreteExteriorCalculusSolver<Calculus, LinearAlgebraSolver, 2, PRIMAL, 2, PRIMAL> SolverU;
+  typedef DiscreteExteriorCalculusSolver<Calculus, LinearAlgebraSolver, 0, PRIMAL, 0, PRIMAL> SolverU;
   SolverU solver_u;
   typedef DiscreteExteriorCalculusSolver<Calculus, LinearAlgebraSolver, 1, PRIMAL, 1, PRIMAL> SolverV;
   SolverV solver_v;
@@ -533,7 +548,7 @@ int main( int argc, char** argv )
     l_sur_4.myContainer( index ) = l / 4.0;
   double coef_eps = 2.0;
   double eps      = 2.0 * e;
-  const int n     = 10;
+  const int n     = 5;
   trace.endBlock();
       
   //-----------------------------------------------------------------------------
@@ -551,10 +566,10 @@ int main( int argc, char** argv )
           trace.beginBlock("Solving for u");
           trace.info() << "Building matrix Av2A" << endl;
           PrimalIdentity1 diag_v  = diag( calculus, v );
-          PrimalIdentity2 U_Id2 = -1.0 * primal_D1 * diag_v * diag_v * dual_h1 * dual_D0 * primal_h2
-            + alpha_Id2;
+          PrimalIdentity0 U_Id0 = -1.0 * dual_h2 * dual_D1 * primal_h1 * diag_v * diag_v * primal_D0
+            + alpha_Id0;
           trace.info() << "Prefactoring matrix Av2A + alpha_iG0" << endl;
-          solver_u.compute( U_Id2 );
+          solver_u.compute( U_Id0 );
           for ( unsigned int d = 0; d < 3; ++d )
             {
               trace.info() << "Solving (Av2A + alpha_iG0) u[" << d << "] = ag[" << d << "]" << endl;
@@ -565,14 +580,21 @@ int main( int argc, char** argv )
           trace.info() << "-------------------------------------------------------------------------------" << endl;
           trace.endBlock();
 
+          typedef PrimalIdentity1::Container Matrix;
+
           trace.beginBlock("Solving for v");
           const PrimalForm1 former_v = v;
           trace.info() << "Building matrix tu_tA_A_u + BB + Mw2" << endl;
           PrimalIdentity1 V_Id1 = BB;
           for ( unsigned int d = 0; d < 3; ++d )
             {
-              const PrimalIdentity1 A_u = diag( calculus, dual_h1 * dual_D0 * primal_h2 * u[ d ] );
-              V_Id1.myContainer += square( calculus, A_u ).myContainer;
+              const PrimalIdentity1 A_u = diag( calculus, primal_D0 * u[ d ] );
+              PrimalIdentity1 uAAu = square( calculus, A_u );
+              const Matrix& M = uAAu.myContainer;
+              for (int k = 0; k < M.outerSize(); ++k)
+                for ( Matrix::InnerIterator it( M, k ); it; ++it )
+                  if ( it.value() < 0.0 ) trace.info() << "[" << it.row() << "," << it.col() << "] = " << it.value() << endl;
+              V_Id1.myContainer += uAAu.myContainer;
             }
           trace.info() << "Prefactoring matrix tu_tA_A_u + BB + Mw2" << endl;
           solver_v.compute( V_Id1 );
@@ -583,7 +605,7 @@ int main( int argc, char** argv )
           trace.info() << "-------------------------------------------------------------------------------" << endl;
           trace.endBlock();
 
-          for ( Index index = 0; index < nb2; index++)
+          for ( Index index = 0; index < nb0; index++)
             {
               double n2 = 0.0;
               for ( unsigned int d = 0; d < 3; ++d )
@@ -637,19 +659,52 @@ int main( int argc, char** argv )
   viewerR.show();
   viewerR << SetMode3D(K.unsigns( *(digSurf.begin()) ).className(), "Basic");
   viewerR.setFillColor( Color( 200, 200, 250 ) );
-  for ( Index index = 0; index < nb2; index++)
+  std::map< Cell, RealVector > face_normals;
+  std::map< Cell, int >        nb_vertices;
+  for ( CComplex::CellMapIterator it = complex.begin( 2 ), itE = complex.end( 2 ); it != itE; ++it )
     {
-      const SCell& cell    = u[ 0 ].getSCell( index );
-      // const RealVector& n  = n_estimations[ cell ];
-      RealVector nr        = RealVector( u[ 0 ].myContainer( index ), 
-                                         u[ 1 ].myContainer( index ), 
-                                         u[ 2 ].myContainer( index ) );
-      nr /= nr.norm();
-      if ( theSetOfSurfels.isInside( cell ) ) 
-        Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerR, cell, nr, false );
-      else
-        Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerR, K.sOpp( cell ), nr, false );
+      face_normals[ it->first ] = RealVector( 0.0, 0.0, 0.0 );
+      nb_vertices [ it->first ] = 0;
     }
+
+  for ( Index index = 0; index < nb0; index++)
+    {
+      RealVector      nr      = RealVector( u[ 0 ].myContainer( index ), 
+                                            u[ 1 ].myContainer( index ), 
+                                            u[ 2 ].myContainer( index ) );
+      const SCell&    cell    = u[ 0 ].getSCell( index );
+      const Cell      vertex  = K.unsigns( cell );
+      CComplex::Cells cofaces = complex.cellCoBoundary( vertex );
+      for ( CComplex::Cells::ConstIterator itF = cofaces.begin(), itFE = cofaces.end(); itF != itFE; ++itF )
+        {
+          Cell cell = *itF;
+          if ( K.uDim( cell ) == 2 ) 
+            {
+              face_normals[ cell ] += nr;
+              nb_vertices [ cell ] += 1; 
+            }
+        }
+    }
+  for ( ConstIterator it = digSurf.begin(), itE = digSurf.end(); it != itE; ++it )
+    {
+      const SCell surfel = *it;
+      const Cell  cell   = K.unsigns( surfel );
+      RealVector  nr     = face_normals[ cell ] / (double) nb_vertices[ cell ];
+      Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerR, surfel, nr, false );
+    }
+  // for ( Index index = 0; index < nb0; index++)
+  //   {
+  //     const SCell& cell    = u[ 0 ].getSCell( index );
+  //     // const RealVector& n  = n_estimations[ cell ];
+  //     RealVector nr        = RealVector( u[ 0 ].myContainer( index ), 
+  //                                        u[ 1 ].myContainer( index ), 
+  //                                        u[ 2 ].myContainer( index ) );
+  //     nr /= nr.norm();
+  //     if ( theSetOfSurfels.isInside( cell ) ) 
+  //       Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerR, cell, nr, false );
+  //     else
+  //       Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerR, K.sOpp( cell ), nr, false );
+  //   }
   viewerR.setLineColor( Color( 255, 0, 0 ) );
   for ( Index index = 0; index < nb1; index++)
     {
