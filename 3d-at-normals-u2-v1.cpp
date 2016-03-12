@@ -204,6 +204,7 @@ int main( int argc, char** argv )
     ("trivial-radius,t", po::value<double>()->default_value( 3 ), "the parameter t defining the radius for the Trivial estimator, which is used for reorienting II or VCM normal estimations." )
     ("r-radius,r",  po::value< double >(), "Kernel radius r for IntegralInvariant estimator" )
     ("noise,k",  po::value< double >()->default_value(0.5), "Level of Kanungo noise ]0;1[" )
+    ("select,s",  po::value< std::string >()->default_value( "All" ), "Selects which part of the data is kept: All | Max | [size], All keeps all, Max keeps only the connected component of maximal size, [size] defines the minimum size of each kept connected component. The size is in number of surfels." )
     ("min,l",  po::value<  int >()->default_value(0), "set the minimal image threshold to define the image object (object defined by the voxel with intensity belonging to ]min, max ] )." )
     ("max,u",  po::value<  int >()->default_value(255), "set the minimal image threshold to define the image object (object defined by the voxel with intensity belonging to ]min, max] )." )
     ("lambda,L", po::value<double>()->default_value( 0.05 ), "the parameter lambda of AT functional." )
@@ -312,14 +313,48 @@ int main( int argc, char** argv )
   //-----------------------------------------------------------------------------
   //! [3dVolBoundaryViewer-ExtractingSurface]
   trace.beginBlock( "Extracting boundary by scanning the space. " );
+  std::string select = vm[ "select" ].as< std::string>();
+  unsigned int select_size = 0;
+  if ( ( select != "All" ) && ( select != "Max" ) ) select_size = atoi( select.c_str() );
   MySetOfSurfels theSetOfSurfels( K, surfAdj );
-  Surfaces<KSpace>::sMakeBoundary( theSetOfSurfels.surfelSet(),
-                                   K, noisy_object,
-                                   domain.lowerBound(),
-                                   domain.upperBound() );
+  std::vector< std::vector<SCell > > vectConnectedSCell;
+  Surfaces<KSpace>::extractAllConnectedSCell( vectConnectedSCell, K, surfAdj,
+                                              noisy_object, false);
+  if( vectConnectedSCell.size() == 0 )
+    {
+      trace.error()<< "No surface component exists. Please check the vol file --min and --max parameters." << std::endl;
+      return 3;
+    }
+  int nb_surfels = 0;
+  std::for_each( vectConnectedSCell.begin(), vectConnectedSCell.end(),
+                 [&] ( std::vector<SCell >& v ) { nb_surfels += v.size(); } );
+  int cc_max_size_idx = -1;
+  auto it_max         = std::max_element( vectConnectedSCell.begin(), vectConnectedSCell.end(),
+                                          [] (std::vector<SCell >& v1, std::vector<SCell >& v2)
+                                          { return v1.size() < v2.size(); } );
+  if ( select == "Max" ) cc_max_size_idx = std::distance( vectConnectedSCell.begin(), it_max );
+  unsigned int nb_big = 0;
+  for ( int i = 0; i < vectConnectedSCell.size(); ++i )
+    {
+      if ( ( ( cc_max_size_idx < 0 ) && ( vectConnectedSCell[ i ].size() >= select_size ) )
+           || ( i == cc_max_size_idx ) )
+        {
+          theSetOfSurfels.surfelSet().insert( vectConnectedSCell[ i ].begin(),
+                                              vectConnectedSCell[ i ].end() );
+          nb_big++;
+        }
+    }
+  trace.info() << "- Total number of surfels    = " << nb_surfels << std::endl;
+  trace.info() << "- Number of components       = " << vectConnectedSCell.size() << std::endl;
+  trace.info() << "- Size biggest component     = " << it_max->size() << std::endl;
+  trace.info() << "- Number selected components = " << nb_big << std::endl;
+  
+  // Surfaces<KSpace>::sMakeBoundary( theSetOfSurfels.surfelSet(),
+  //                                  K, noisy_object,
+  //                                  domain.lowerBound(),
+  //                                  domain.upperBound() );
   MyDigitalSurface digSurf( theSetOfSurfels );
-  trace.info() << "Digital surface has " << digSurf.size() << " surfels."
-               << std::endl;
+  trace.info() << "- Digital surface #surfels   = " << digSurf.size() << std::endl;
   trace.endBlock();
   //! [3dVolBoundaryViewer-ExtractingSurface]
 

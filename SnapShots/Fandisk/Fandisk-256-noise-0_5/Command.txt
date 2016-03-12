@@ -1,0 +1,1 @@
+./3d-at-normals-u2-v1 -i ~/Images/3d/vol/fandisk-256.vol --select Max -r 5 -t 3.5 -a 0.015 -e 2 -k 0.5 -L 0.05
