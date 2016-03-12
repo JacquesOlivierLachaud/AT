@@ -442,6 +442,7 @@ int main( int argc, char** argv )
   typedef Calculus::PrimalIdentity0                                PrimalIdentity0;
   typedef Calculus::PrimalIdentity1                                PrimalIdentity1;
   typedef Calculus::PrimalIdentity2                                PrimalIdentity2;
+  typedef Calculus::PrimalDerivative0                              PrimalDerivative0;
   trace.beginBlock( "Creating Discrete Exterior Calculus. " );
   Calculus calculus;
   calculus.initKSpace<Domain>( domain );
@@ -529,8 +530,8 @@ int main( int argc, char** argv )
   alpha_g.push_back( alpha_Id0 * g[ 1 ] );
   alpha_g.push_back( alpha_Id0 * g[ 2 ] );
   trace.info() << "lap_operator_v" << endl;
-  const PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 
-                                                  + dual_h1 * dual_D0 * primal_h2 * primal_D1 );
+  const PrimalIdentity1 lap_operator_v = -1.0 * // ( primal_D0 * dual_h2 * dual_D1 * primal_h1 
+    ( dual_h1 * dual_D0 * primal_h2 * primal_D1 );
   // SparseLU is so much faster than SparseQR
   // SimplicialLLT is much faster than SparseLU
   // typedef EigenLinearAlgebraBackend::SolverSparseQR LinearAlgebraSolver;
@@ -566,8 +567,10 @@ int main( int argc, char** argv )
           trace.beginBlock("Solving for u");
           trace.info() << "Building matrix Av2A" << endl;
           PrimalIdentity1 diag_v  = diag( calculus, v );
-          PrimalIdentity0 U_Id0 = -1.0 * dual_h2 * dual_D1 * primal_h1 * diag_v * diag_v * primal_D0
-            + alpha_Id0;
+          PrimalDerivative0 v_A = diag_v * primal_D0;
+          PrimalIdentity0 U_Id0 = square( calculus, v_A ) + alpha_Id0;
+          // PrimalIdentity0 U_Id0 = -1.0 * dual_h2 * dual_D1 * primal_h1 * diag_v * diag_v * primal_D0
+          //   + alpha_Id0;
           trace.info() << "Prefactoring matrix Av2A + alpha_iG0" << endl;
           solver_u.compute( U_Id0 );
           for ( unsigned int d = 0; d < 3; ++d )
@@ -590,12 +593,13 @@ int main( int argc, char** argv )
             {
               const PrimalIdentity1 A_u = diag( calculus, primal_D0 * u[ d ] );
               PrimalIdentity1 uAAu = square( calculus, A_u );
-              const Matrix& M = uAAu.myContainer;
-              for (int k = 0; k < M.outerSize(); ++k)
-                for ( Matrix::InnerIterator it( M, k ); it; ++it )
-                  if ( it.value() < 0.0 ) trace.info() << "[" << it.row() << "," << it.col() << "] = " << it.value() << endl;
               V_Id1.myContainer += uAAu.myContainer;
             }
+          // const Matrix& M = V_Id1.myContainer;
+          // for (int k = 0; k < M.outerSize(); ++k)
+          //   for ( Matrix::InnerIterator it( M, k ); it; ++it )
+          //     if ( it.value() < 0.0 ) trace.info() << "[" << it.row() << "," << it.col() << "] = " << it.value() << endl;
+
           trace.info() << "Prefactoring matrix tu_tA_A_u + BB + Mw2" << endl;
           solver_v.compute( V_Id1 );
           trace.info() << "Solving (tu_tA_A_u + BB + Mw2) v = 1/(4eps) * l" << endl;

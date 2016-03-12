@@ -314,7 +314,7 @@ int main( int argc, char** argv )
   trace.beginBlock( "Extracting boundary by scanning the space. " );
   MySetOfSurfels theSetOfSurfels( K, surfAdj );
   Surfaces<KSpace>::sMakeBoundary( theSetOfSurfels.surfelSet(),
-                                   K, image,
+                                   K, noisy_object,
                                    domain.lowerBound(),
                                    domain.upperBound() );
   MyDigitalSurface digSurf( theSetOfSurfels );
@@ -514,8 +514,12 @@ int main( int argc, char** argv )
   alpha_g.push_back( alpha_Id2 * g[ 1 ] );
   alpha_g.push_back( alpha_Id2 * g[ 2 ] );
   trace.info() << "lap_operator_v" << endl;
-  const PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 
-                                                  + dual_h1 * dual_D0 * primal_h2 * primal_D1 );
+  // Do not work well
+  // const PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 );
+  // const PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 
+  //                                                 + dual_h1 * dual_D0 * primal_h2 * primal_D1 );
+  // Good one !
+  const PrimalIdentity1 lap_operator_v = -1.0 * ( dual_h1 * dual_D0 * primal_h2 * primal_D1 );
   // SparseLU is so much faster than SparseQR
   // SimplicialLLT is much faster than SparseLU
   // typedef EigenLinearAlgebraBackend::SolverSparseQR LinearAlgebraSolver;
@@ -533,7 +537,7 @@ int main( int argc, char** argv )
     l_sur_4.myContainer( index ) = l / 4.0;
   double coef_eps = 2.0;
   double eps      = 2.0 * e;
-  const int n     = 10;
+  const int n     = 5;
   trace.endBlock();
       
   //-----------------------------------------------------------------------------
