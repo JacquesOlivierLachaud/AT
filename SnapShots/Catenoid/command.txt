@@ -1,0 +1,1 @@
+./3d-at-normals-u2-v1 -i ~/GITHUB/DGtal/examples/samples/cat10.vol  --select Max -r 2 -t 2 -a 0.2 -e 2 -k 0 -L 0.2
