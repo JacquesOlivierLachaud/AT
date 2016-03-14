@@ -550,7 +550,8 @@ int main( int argc, char** argv )
   alpha_g.push_back( alpha_Id2 * g[ 2 ] );
   trace.info() << "lap_operator_v" << endl;
   // Do not work well
-  // const PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 );
+  // const PrimalIdentity1 lap_operator_v = 0.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 );
+  // const PrimalIdentity1 lap_operator_v = 1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 );
   // const PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 
   //                                                 + dual_h1 * dual_D0 * primal_h2 * primal_D1 );
   // Good one !
