@@ -200,16 +200,18 @@ int main( int argc, char** argv )
   po::options_description general_opt("Allowed options are");
   general_opt.add_options()
     ("help,h", "display this message")
-    ("input,i", po::value< std::string >(), ".vol file")
-    ("trivial-radius,t", po::value<double>()->default_value( 3 ), "the parameter t defining the radius for the Trivial estimator, which is used for reorienting II or VCM normal estimations." )
-    ("r-radius,r",  po::value< double >(), "Kernel radius r for IntegralInvariant estimator" )
-    ("noise,k",  po::value< double >()->default_value(0.5), "Level of Kanungo noise ]0;1[" )
-    ("select,s",  po::value< std::string >()->default_value( "All" ), "Selects which part of the data is kept: All | Max | [size], All keeps all, Max keeps only the connected component of maximal size, [size] defines the minimum size of each kept connected component. The size is in number of surfels." )
-    ("min,l",  po::value<  int >()->default_value(0), "set the minimal image threshold to define the image object (object defined by the voxel with intensity belonging to ]min, max ] )." )
-    ("max,u",  po::value<  int >()->default_value(255), "set the minimal image threshold to define the image object (object defined by the voxel with intensity belonging to ]min, max] )." )
-    ("lambda,L", po::value<double>()->default_value( 0.05 ), "the parameter lambda of AT functional." )
-    ("alpha,a", po::value<double>()->default_value( 0.1 ), "the parameter alpha of AT functional." )
-    ("epsilon,e", po::value<double>()->default_value( 4.0 ), "the initial parameter epsilon of AT functional." );
+    ("input,i", po::value< std::string >(), "specifies the name of the volume file (.vol,.pgm3d).")
+    ("min,l",  po::value<  int >()->default_value(0), "sets the minimal image threshold to define the image object (object defined by the voxel with intensity belonging to ]min, max ] )." )
+    ("max,u",  po::value<  int >()->default_value(255), "sets the maximal image threshold to define the image object (object defined by the voxel with intensity belonging to ]min, max] )." )
+    ("noise,k",  po::value< double >()->default_value(0.5), "sets the level of Kanungo noise ]0;1[ added to input data." )
+    ("select,s",  po::value< std::string >()->default_value( "All" ), "selects which part of the data is kept: All | Max | [size], All keeps all, Max keeps only the connected component of maximal size, [size] defines the minimum size of each kept connected component. The size is in number of surfels." )
+    ("trivial-radius,t", po::value<double>()->default_value( 3 ), "sets the parameter t defining the radius for the Trivial estimator, which is used for reorienting II or VCM normal estimations." )
+    ("r-radius,r",  po::value< double >(), "sets the kernel radius r for IntegralInvariant estimator" )
+    ("lambda,L", po::value<double>()->default_value( 0.05 ), "sets the parameter lambda of AT functional." )
+    ("alpha,a", po::value<double>()->default_value( 0.1 ), "sets the parameter alpha of AT functional." )
+    ("epsilon,e", po::value<double>()->default_value( 4.0 ), "sets the initial parameter epsilon of AT functional." )
+    ("laplacian-v,v", po::value<std::string>()->default_value( "BtB" ), "sets the laplacian operator on v functional: None(ok) BtB(ok) tAA(!) BtB+tAA(!)." )
+    ;
 
   bool parseOK = true;
   po::variables_map vm;
@@ -525,9 +527,10 @@ int main( int argc, char** argv )
   //-----------------------------------------------------------------------------
   // Building AT functional.
   trace.beginBlock( "Building AT functional. " );
-  double a  = vm[ "alpha" ].as<double>();
-  double e  = vm[ "epsilon" ].as<double>();
-  double l  = vm[ "lambda" ].as<double>();
+  double a        = vm[ "alpha" ].as<double>();
+  double e        = vm[ "epsilon" ].as<double>();
+  double l        = vm[ "lambda" ].as<double>();
+  std::string lap = vm[ "laplacian-v" ].as<std::string>();
 
   // u = g at the beginning
   trace.info() << "u[0,1,2]" << endl;
@@ -549,13 +552,21 @@ int main( int argc, char** argv )
   alpha_g.push_back( alpha_Id2 * g[ 1 ] );
   alpha_g.push_back( alpha_Id2 * g[ 2 ] );
   trace.info() << "lap_operator_v" << endl;
+  
   // Do not work well
   // const PrimalIdentity1 lap_operator_v = 0.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 );
-  // const PrimalIdentity1 lap_operator_v = 1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 );
+  // const PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 );
   // const PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 
   //                                                 + dual_h1 * dual_D0 * primal_h2 * primal_D1 );
   // Good one !
-  const PrimalIdentity1 lap_operator_v = -1.0 * ( dual_h1 * dual_D0 * primal_h2 * primal_D1 );
+  const PrimalIdentity1 lap_operator_v =
+    ( lap == "None" ) ? 0.0 * Id1
+    : ( lap == "BtB" ) ? -1.0 * ( dual_h1 * dual_D0 * primal_h2 * primal_D1 )
+    : ( lap == "tAA" ) ? -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 )
+    : -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1      // BtB+tAA
+               + dual_h1 * dual_D0 * primal_h2 * primal_D1 );
+  
+  // -1.0 * ( dual_h1 * dual_D0 * primal_h2 * primal_D1 );
   // SparseLU is so much faster than SparseQR
   // SimplicialLLT is much faster than SparseLU
   // typedef EigenLinearAlgebraBackend::SolverSparseQR LinearAlgebraSolver;
