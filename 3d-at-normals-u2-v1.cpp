@@ -33,6 +33,7 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 #include <iostream>
+#include <sstream>
 #include <string>
 #include "DGtal/base/Common.h"
 
@@ -179,7 +180,38 @@ namespace DGtal {
 }
 //-----------------------------------------------------------------------------
 
-
+/**
+Function that maps 1-forms on 1-cells as a vector on a 2-cell, but
+without taking care of orientations. A kind of unsigned sharp
+operator.
+*/
+template <typename Calculus, typename Complex, typename MapCell2RealVector>
+void
+map1FormTo2Cell( const Calculus& calculus, const Complex& complex,
+                 const typename Calculus::PrimalForm1& v,
+                 MapCell2RealVector& map2 )
+{
+  typedef typename Calculus::Index      Index;
+  typedef typename Calculus::Cell       Cell;
+  typedef typename Complex::KSpace      KSpace;
+  typedef typename KSpace::Space        Space;
+  typedef typename Space::RealVector    RealVector;
+  const KSpace & K = complex.space();
+  for ( typename Complex::CellMapConstIterator it = complex.begin( 2 ), itE = complex.end( 2 ); it != itE; ++it )
+    {
+      typename Complex::Cells faces = complex.cellBoundary( it->first, true );
+      RealVector w( 0.0, 0.0, 0.0 );
+      for ( unsigned int i = 0; i < faces.size(); ++i )
+        {
+          if ( K.uDim( faces[ i ] ) != 1 ) continue;
+          Cell linel  = faces[ i ];
+          Index index = calculus.getCellIndex( linel );
+          Dimension k = * K.uDirs( linel );
+          w[ k ]     += std::fabs( v.myContainer( index ) );
+        }
+      map2[ it->first ] = w / 4.0;
+    }
+}
 
 /**
  * Missing parameter error message.
@@ -255,10 +287,11 @@ int main( int argc, char** argv )
   QApplication application(argc,argv);
 
 
-  int min        =  vm["min"].as<  int >();
-  int max        =  vm["max"].as<  int >();
-  const double h = 1.0; // not pertinent for now.
-
+  int min           =  vm["min"].as<  int >();
+  int max           =  vm["max"].as<  int >();
+  const double h    = 1.0; // not pertinent for now.
+  std::ostringstream title_in;  title_in << "Brute normals"; 
+  std::ostringstream title_out; title_out << "AT normals"; 
 
   //-----------------------------------------------------------------------------
   // Types.
@@ -357,6 +390,8 @@ int main( int argc, char** argv )
   //                                  domain.upperBound() );
   MyDigitalSurface digSurf( theSetOfSurfels );
   trace.info() << "- Digital surface #surfels   = " << digSurf.size() << std::endl;
+  title_in  << " select=" << select;
+  title_out << " select=" << select;
   trace.endBlock();
   //! [3dVolBoundaryViewer-ExtractingSurface]
 
@@ -404,6 +439,8 @@ int main( int argc, char** argv )
         nii_estimations[ i ] *= -1.0;
     }
   trace.info() << "- nb estimations  = " << nii_estimations.size() << std::endl;
+  title_in  << " Nest=II r=" << r;
+  title_out << " Nest=II r=" << r;
   trace.endBlock();
 
   // The chosen estimator is II.
@@ -421,7 +458,7 @@ int main( int argc, char** argv )
   //! [3dVolBoundaryViewer-ViewingSurface]
   trace.beginBlock( "Displaying everything. " );
   Viewer3D<Space,KSpace> viewer( K );
-  viewer.setWindowTitle("Simple boundary of volume Viewer");
+  viewer.setWindowTitle( title_in.str().c_str() );
   viewer.show();
   viewer << SetMode3D(K.unsigns( *(digSurf.begin()) ).className(), "Basic");
   unsigned int i = 0;
@@ -444,6 +481,9 @@ int main( int argc, char** argv )
   typedef Calculus::PrimalIdentity0                                PrimalIdentity0;
   typedef Calculus::PrimalIdentity1                                PrimalIdentity1;
   typedef Calculus::PrimalIdentity2                                PrimalIdentity2;
+  typedef Calculus::DualForm0                                      DualForm0;
+  typedef Calculus::DualForm1                                      DualForm1;
+  typedef Calculus::DualForm2                                      DualForm2;
   trace.beginBlock( "Creating Discrete Exterior Calculus. " );
   Calculus calculus;
   calculus.initKSpace<Domain>( domain );
@@ -531,6 +571,7 @@ int main( int argc, char** argv )
   double e        = vm[ "epsilon" ].as<double>();
   double l        = vm[ "lambda" ].as<double>();
   std::string lap = vm[ "laplacian-v" ].as<std::string>();
+  title_out << " alpha=" << a << " start_eps=" << e << " lambda=" << l << " lapv=" << lap;
 
   // u = g at the beginning
   trace.info() << "u[0,1,2]" << endl;
@@ -684,7 +725,7 @@ int main( int argc, char** argv )
   // Displaying regularized normals
   trace.beginBlock( "Displaying regularized normals. " );
   Viewer3D<Space,KSpace> viewerR( K );
-  viewerR.setWindowTitle("Regularized normals");
+  viewerR.setWindowTitle( title_out.str().c_str() );
   viewerR.show();
   viewerR << SetMode3D(K.unsigns( *(digSurf.begin()) ).className(), "Basic");
   viewerR.setFillColor( Color( 200, 200, 250 ) );
@@ -712,6 +753,56 @@ int main( int argc, char** argv )
       viewerR.addLine( embedder.embed( p0 ), embedder.embed( p1 ), (0.5 - v.myContainer( index ))/ 5.0 );
     }
   viewerR << Viewer3D<>::updateDisplay;
+  trace.endBlock();
+
+  trace.beginBlock( "Displaying regularized features with normals. " );
+  Calculus::DualAntiderivative1   sharp_x   = calculus.sharpDirectional<DUAL>(0);
+  Calculus::DualAntiderivative1   sharp_y   = calculus.sharpDirectional<DUAL>(1);
+  Calculus::DualAntiderivative1   sharp_z   = calculus.sharpDirectional<DUAL>(2);
+  DualForm0 vx = sharp_x * primal_h1 * v;
+  DualForm0 vy = sharp_y * primal_h1 * v;
+  DualForm0 vz = sharp_z * primal_h1 * v;
+  Viewer3D<Space,KSpace> viewerF( K );
+  viewerF.setWindowTitle( title_out.str().c_str() );
+  viewerF.show();
+  viewerF << SetMode3D(K.unsigns( *(digSurf.begin()) ).className(), "Basic");
+  DGtal::GradientColorMap<double> grad( 0, 1.0 );
+  grad.addColor( DGtal::Color( 200, 200, 255 ) );
+  grad.addColor( DGtal::Color( 200, 200, 255 ) );
+  grad.addColor( DGtal::Color( 200, 200, 255 ) );
+  grad.addColor( DGtal::Color( 200, 255, 255 ) );
+  grad.addColor( DGtal::Color( 255, 255, 0 ) );
+  grad.addColor( DGtal::Color( 255, 0, 0 ) );
+  std::map< CComplex::Cell, RealVector > map2;
+  map1FormTo2Cell( calculus, complex, v, map2 );
+  for ( Index index = 0; index < nb2; index++)
+    {
+      const SCell& cell    = u[ 0 ].getSCell( index );
+      RealVector nr        = RealVector( u[ 0 ].myContainer( index ), 
+                                         u[ 1 ].myContainer( index ), 
+                                         u[ 2 ].myContainer( index ) );
+      nr /= nr.norm();
+      // RealVector w( vx.myContainer( index ), vy.myContainer( index ), vz.myContainer( index ) );
+      RealVector w = map2[ K.unsigns( cell ) ];
+      double feature = 2.0 - 2.0 * std::max( 0.0, std::min( 2.0, w.norm() ) );
+      feature = std::min( 1.0, feature*feature );
+      viewerF.setFillColor( grad( feature ) );
+      if ( theSetOfSurfels.isInside( cell ) ) 
+        Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerF, cell, nr, false );
+      else
+        Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerF, K.sOpp( cell ), nr, false );     
+    }
+  viewerF.setLineColor( Color( 255, 0, 0 ) );
+  for ( Index index = 0; index < nb1; index++)
+    {
+      const SCell& cell    = v.getSCell( index );
+      Dimension    k       = * K.sDirs( cell ); 
+      const SCell  p0      = K.sIncident( cell, k, true );
+      const SCell  p1      = K.sIncident( cell, k, false );
+      if ( v.myContainer( index ) >= 0.5 ) continue;
+      viewerF.addLine( embedder.embed( p0 ), embedder.embed( p1 ), (0.5 - v.myContainer( index ))/ 5.0 );
+    }
+  viewerF << Viewer3D<>::updateDisplay;
   trace.endBlock();
 
   return application.exec();
