@@ -56,22 +56,26 @@
 #include "DGtal/graph/DepthFirstVisitor.h"
 #include "DGtal/graph/GraphVisitorRange.h"
 #include "DGtal/math/ScalarFunctors.h"
-#include "DGtal/geometry/surfaces/estimation/estimationFunctors/ElementaryConvolutionNormalVectorEstimator.h"
-#include "DGtal/geometry/surfaces/estimation/LocalEstimatorFromSurfelFunctorAdapter.h"
 // Noise
 #include "DGtal/geometry/volumes/KanungoNoise.h"
 
-// Integral Invariant includes
+// Trivial estimator includes
+#include "DGtal/geometry/surfaces/estimation/estimationFunctors/ElementaryConvolutionNormalVectorEstimator.h"
+#include "DGtal/geometry/surfaces/estimation/LocalEstimatorFromSurfelFunctorAdapter.h"
+
+// Integral Invariant estimator includes
 #include "DGtal/geometry/surfaces/estimation/IIGeometricFunctors.h"
 #include "DGtal/geometry/surfaces/estimation/IntegralInvariantVolumeEstimator.h"
 #include "DGtal/geometry/surfaces/estimation/IntegralInvariantCovarianceEstimator.h"
+
+// VCM estimator includes
+#include "DGtal/geometry/surfaces/estimation/VoronoiCovarianceMeasureOnDigitalSurface.h"
+#include "DGtal/geometry/surfaces/estimation/VCMDigitalSurfaceLocalEstimator.h"
 
 // DEC
 #include "DGtal/math/linalg/EigenSupport.h"
 #include "DGtal/dec/DiscreteExteriorCalculus.h"
 #include "DGtal/dec/DiscreteExteriorCalculusSolver.h"
-
-
 
 // Drawing
 #include "DGtal/io/boards/Board3D.h"
@@ -237,8 +241,11 @@ int main( int argc, char** argv )
     ("max,u",  po::value<  int >()->default_value(255), "sets the maximal image threshold to define the image object (object defined by the voxel with intensity belonging to ]min, max] )." )
     ("noise,k",  po::value< double >()->default_value(0.5), "sets the level of Kanungo noise ]0;1[ added to input data." )
     ("select,s",  po::value< std::string >()->default_value( "All" ), "selects which part of the data is kept: All | Max | [size], All keeps all, Max keeps only the connected component of maximal size, [size] defines the minimum size of each kept connected component. The size is in number of surfels." )
-    ("trivial-radius,t", po::value<double>()->default_value( 3 ), "sets the parameter t defining the radius for the Trivial estimator, which is used for reorienting II or VCM normal estimations." )
-    ("r-radius,r",  po::value< double >(), "sets the kernel radius r for IntegralInvariant estimator" )
+    ("estimator,E",  po::value< std::string >()->default_value( "Trivial" ), "chooses the normal estimator in Trivial | II | VCM: Trivial (local smoothing of the trivial normals to surfels, requires --trivial-radius), II (normal given by the digital integral invariant, requires --r-radius and --trivial-radius), VCM (normal given by the Voronoi Covariance Measure, requires --chi, --R-radius, --r-radius and --trivial-radius)." )
+    ("trivial-radius,t", po::value<double>()->default_value( 3 ), "sets the parameter defining the smoothing radius of the Trivial estimator, and it is also used for reorienting II or VCM normal estimations." )
+    ("r-radius,r",  po::value< double >(), "sets the kernel radius r for II and VCM estimators." )
+    ("R-radius,R",  po::value< double >(), "sets the offset radius R for VCM estimator." )
+    ("chi,K", po::value<string>()->default_value( "Hat" ), "sets the function chi_r of VCM, either hat function (Hat) or ball function (Ball)." )
     ("lambda,L", po::value<double>()->default_value( 0.05 ), "sets the parameter lambda of AT functional." )
     ("alpha,a", po::value<double>()->default_value( 0.1 ), "sets the parameter alpha of AT functional." )
     ("epsilon,e", po::value<double>()->default_value( 4.0 ), "sets the initial parameter epsilon of AT functional." )
@@ -262,8 +269,16 @@ int main( int argc, char** argv )
     missingParam("--input");
     neededArgsGiven=false;
   }
-  if (parseOK && !(vm.count("r-radius"))){
+  if (parseOK && (vm["estimator"].as<std::string>() == "II" ) && !(vm.count("r-radius"))){
     missingParam("--r-radius");
+    neededArgsGiven=false;
+  }
+  if (parseOK && (vm["estimator"].as<std::string>() == "VCM" ) && !(vm.count("r-radius"))) {
+    missingParam("--r-radius");
+    neededArgsGiven=false;
+  }
+  if (parseOK && (vm["estimator"].as<std::string>() == "VCM" ) && !(vm.count("R-radius"))) {
+    missingParam("--R-radius");
     neededArgsGiven=false;
   }
 
@@ -279,7 +294,7 @@ int main( int argc, char** argv )
       trace.info()<< "Vol file viewer, with normals regularized by Ambrosio-Tortorelli functionnal" <<std::endl
                   << general_opt << "\n"
                   << "Basic usage: "<<std::endl
-                  << "\t at-3d-normals -i file.vol -r 5 --noise 0.1"<<std::endl
+                  << "\t at-3d-normals-u2-v1 -i file.vol -r 5 --noise 0.1"<<std::endl
                   << std::endl;
       return 0;
     }
@@ -297,6 +312,7 @@ int main( int argc, char** argv )
   // Types.
   typedef Z3i::Space                                 Space;
   typedef Z3i::KSpace                                KSpace;
+  typedef Space::Point                               Point;
   typedef Space::RealVector                          RealVector;
   typedef KSpace::SCell                              SCell;
   typedef KSpace::Cell                               Cell;
@@ -395,64 +411,128 @@ int main( int argc, char** argv )
   trace.endBlock();
   //! [3dVolBoundaryViewer-ExtractingSurface]
 
-  // Map surfel -> estimated normals.
-  std::map<SCell,RealVector> n_estimations;
-
-  //-----------------------------------------------------------------------------
-  // Estimating orientation of normals
-  trace.beginBlock( "Estimating orientation of normals by simple convolutions of trivial surfel normals." );
-  double t = vm["trivial-radius"].as<double>();
-  typedef RealVector::Component                    Scalar;
-  typedef functors::HatFunction<Scalar>            Functor;
-  typedef functors::ElementaryConvolutionNormalVectorEstimator< Surfel, CanonicSCellEmbedder<KSpace> > SurfelFunctor;
-  typedef ExactPredicateLpSeparableMetric<Space,2> Metric;
-  typedef LocalEstimatorFromSurfelFunctorAdapter< MySetOfSurfels, Metric, SurfelFunctor, Functor>      NormalEstimator;
-  Functor                      fct( 1.0, t );
-  CanonicSCellEmbedder<KSpace> canonic_embedder( K );
-  SurfelFunctor                surfelFct( canonic_embedder, 1.0 );
-  NormalEstimator              nt_estimator;
-  Metric                       aMetric;
-  std::vector<RealVector>      nt_estimations;
-  nt_estimator.attach( digSurf );
-  nt_estimator.setParams( aMetric, surfelFct, fct, t );
-  nt_estimator.init( h, digSurf.begin(), digSurf.end());
-  nt_estimator.eval( digSurf.begin(), digSurf.end(), std::back_inserter( nt_estimations ) );
-  trace.endBlock();
 
   //-----------------------------------------------------------------------------
   // Estimating normals
-  trace.beginBlock( "Estimating normals with II." );
-  typedef typename Domain::ConstIterator DomainConstIterator;
-  typedef functors::IINormalDirectionFunctor<Space> IINormalFunctor;
-  typedef IntegralInvariantCovarianceEstimator<KSpace, NoisyObject, IINormalFunctor> IINormalEstimator;
-  std::vector<RealVector> nii_estimations;
-  const double            r = vm["r-radius"].as<double>();
-  IINormalEstimator       nii_estimator( K, noisy_object );
-  trace.info() << " r=" << r << std::endl;
-  nii_estimator.setParams( r );
-  nii_estimator.init( h, digSurf.begin(), digSurf.end() );
-  nii_estimator.eval( digSurf.begin(), digSurf.end(), std::back_inserter( nii_estimations ) );
-  // Fix orientations of ii.
-  for ( unsigned int i = 0; i < nii_estimations.size(); ++i )
-    {
-      if ( nii_estimations[ i ].dot( nt_estimations[ i ] ) < 0.0 )
-        nii_estimations[ i ] *= -1.0;
-    }
-  trace.info() << "- nb estimations  = " << nii_estimations.size() << std::endl;
-  title_in  << " Nest=II r=" << r;
-  title_out << " Nest=II r=" << r;
-  trace.endBlock();
+  trace.beginBlock( "Estimating normals." );
+  // Map surfel -> estimated normals.
+  std::map<SCell,RealVector> n_estimations;  // map of Trivial, II or VCM normal estimations
+  std::vector<RealVector>    nt_estimations; // vector of Trivial normal estimations
+  std::vector<RealVector>    estimations;    // vector of II or VCM normal estimations
+  std::string                estimator = vm["estimator"].as< std::string >();
 
-  // The chosen estimator is II.
+  if ( estimator == "Trivial" || estimator == "II" )
+    {
+      //-----------------------------------------------------------------------------
+      // Estimating normals by Trivial estimator.
+      trace.beginBlock( "Estimating orientation of normals by simple convolutions of trivial surfel normals." );
+      typedef RealVector::Component                    Scalar;
+      typedef functors::HatFunction<Scalar>            Functor;
+      typedef functors::ElementaryConvolutionNormalVectorEstimator< Surfel, CanonicSCellEmbedder<KSpace> > SurfelFunctor;
+      typedef ExactPredicateLpSeparableMetric<Space,2> Metric;
+      typedef LocalEstimatorFromSurfelFunctorAdapter< MySetOfSurfels, Metric, SurfelFunctor, Functor>      NormalEstimator;
+      const double t = vm["trivial-radius"].as<double>();
+      Functor                      fct( 1.0, t );
+      CanonicSCellEmbedder<KSpace> canonic_embedder( K );
+      SurfelFunctor                surfelFct( canonic_embedder, 1.0 );
+      NormalEstimator              nt_estimator;
+      Metric                       aMetric;
+      nt_estimator.attach( digSurf );
+      nt_estimator.setParams( aMetric, surfelFct, fct, t );
+      nt_estimator.init( h, digSurf.begin(), digSurf.end());
+      nt_estimator.eval( digSurf.begin(), digSurf.end(), std::back_inserter( nt_estimations ) );
+      if ( estimator == "Trivial" ) 
+        {
+          estimations = nt_estimations;
+          title_in  << " Nest=Trivial t=" << t;
+          title_out << " Nest=Trivial t=" << t;
+        }
+      trace.endBlock();
+    }
+  if ( estimator == "II" )
+    {
+      //-----------------------------------------------------------------------------
+      // Estimating normals by Integral Invariant
+      trace.beginBlock( "Estimating normals with II." );
+      typedef typename Domain::ConstIterator DomainConstIterator;
+      typedef functors::IINormalDirectionFunctor<Space> IINormalFunctor;
+      typedef IntegralInvariantCovarianceEstimator<KSpace, NoisyObject, IINormalFunctor> IINormalEstimator;
+      const double            r = vm["r-radius"].as<double>();
+      IINormalEstimator       nii_estimator( K, noisy_object );
+      trace.info() << " r=" << r << std::endl;
+      nii_estimator.setParams( r );
+      nii_estimator.init( h, digSurf.begin(), digSurf.end() );
+      nii_estimator.eval( digSurf.begin(), digSurf.end(), std::back_inserter( estimations ) );
+      // Fix orientations of ii.
+      for ( unsigned int i = 0; i < estimations.size(); ++i )
+        {
+          if ( estimations[ i ].dot( nt_estimations[ i ] ) < 0.0 )
+            estimations[ i ] *= -1.0;
+        }
+      title_in  << " Nest=II r=" << r;
+      title_out << " Nest=II r=" << r;
+      trace.endBlock();
+    }
+  if ( estimator == "VCM" )
+    {
+      //-----------------------------------------------------------------------------
+      // Estimating normals by Vornoi Covariance Measure.
+      trace.beginBlock( "Estimating normals with VCM." );
+      typedef ExactPredicateLpSeparableMetric<Space,2> Metric;
+      const double      R   = vm["R-radius"].as<double>();
+      const double      r   = vm["r-radius"].as<double>();
+      const double      t   = vm["trivial-radius"].as<double>();
+      const std::string chi = vm["chi"].as<std::string>();
+      trace.info() << "- R=" << R << " r=" << r << " t=" << t << " chi=" << chi << std::endl;
+      Surfel2PointEmbedding embType = InnerSpel; // limited to InnerSpel for now
+      if ( chi == "Hat" )
+        {
+          typedef functors::HatPointFunction<Point,double> KernelFunction;
+          KernelFunction chi_r( 1.0, r );
+          typedef VoronoiCovarianceMeasureOnDigitalSurface<MySetOfSurfels,Metric,
+                                                           KernelFunction> VCMOnSurface;
+          typedef functors::VCMNormalVectorFunctor<VCMOnSurface> NormalFunctor;
+          typedef VCMDigitalSurfaceLocalEstimator<MySetOfSurfels,Metric,
+                                                  KernelFunction, NormalFunctor> VCMNormalEstimator;
+          VCMNormalEstimator vcm_estimator;
+          vcm_estimator.attach( digSurf );
+          vcm_estimator.setParams( embType, R, r, chi_r, t, Metric(), true );
+          vcm_estimator.init( h, digSurf.begin(), digSurf.end() );
+          vcm_estimator.eval( digSurf.begin(), digSurf.end(), std::back_inserter( estimations ) );
+        }
+      else if ( chi == "ball" ) 
+        {
+          typedef functors::BallConstantPointFunction<Point,double> KernelFunction;
+          KernelFunction chi_r( 1.0, r );
+          typedef VoronoiCovarianceMeasureOnDigitalSurface<MySetOfSurfels,Metric,
+                                                           KernelFunction> VCMOnSurface;
+          typedef functors::VCMNormalVectorFunctor<VCMOnSurface> NormalFunctor;
+          typedef VCMDigitalSurfaceLocalEstimator<MySetOfSurfels, Metric,
+                                                  KernelFunction, NormalFunctor> VCMNormalEstimator;
+          VCMNormalEstimator vcm_estimator;
+          vcm_estimator.attach( digSurf );
+          vcm_estimator.setParams( embType, R, r, chi_r, t, Metric(), true );
+          vcm_estimator.init( h, digSurf.begin(), digSurf.end() );
+          vcm_estimator.eval( digSurf.begin(), digSurf.end(), std::back_inserter( estimations ) );
+        }
+      trace.endBlock();
+    }
+      
+  //-----------------------------------------------------------------------------
+  // Store estimations.
   {
+    trace.beginBlock( "Storing normals as a map SCell -> RealVector." );
+    trace.info() << "- nb estimations  = " << estimations.size() << std::endl;
     unsigned int i = 0;
     for ( ConstIterator it = digSurf.begin(), itE = digSurf.end(); it != itE; ++it, ++i )
       {
-        RealVector nii = nii_estimations[ i ];
-        nii /= nii.norm();
-        n_estimations[ *it ] = nii;
+        RealVector n_est     = estimations[ i ];
+        n_est               /= n_est.norm();
+        n_estimations[ *it ] = n_est;
       }
+    trace.endBlock();
   }
+  trace.endBlock();
 
   //-----------------------------------------------------------------------------
   //! [3dVolBoundaryViewer-ViewingSurface]
