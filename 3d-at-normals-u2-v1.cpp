@@ -822,16 +822,6 @@ int main( int argc, char** argv )
       else
         Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerR, K.sOpp( cell ), nr, false );
     }
-  viewerR.setLineColor( Color( 255, 0, 0 ) );
-  for ( Index index = 0; index < nb1; index++)
-    {
-      const SCell& cell    = v.getSCell( index );
-      Dimension    k       = * K.sDirs( cell ); 
-      const SCell  p0      = K.sIncident( cell, k, true );
-      const SCell  p1      = K.sIncident( cell, k, false );
-      if ( v.myContainer( index ) >= 0.5 ) continue;
-      viewerR.addLine( embedder.embed( p0 ), embedder.embed( p1 ), (0.5 - v.myContainer( index ))/ 5.0 );
-    }
   viewerR << Viewer3D<>::updateDisplay;
   trace.endBlock();
 
