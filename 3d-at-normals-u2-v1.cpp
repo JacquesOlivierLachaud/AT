@@ -568,10 +568,10 @@ int main( int argc, char** argv )
   typedef Calculus::DualForm2                                      DualForm2;
   typedef DGtal::DiscreteExteriorCalculusFactory<EigenLinearAlgebraBackend> CalculusFactory;
   trace.beginBlock( "Creating Discrete Exterior Calculus. " );
-
-  Calculus calculus = CalculusFactory::createFromNSCells<2>(digSurf.begin(), digSurf.end());
-
-  //calculus.initKSpace<Domain>( domain );
+  // JOL: does not work well for BtB.
+  //Calculus calculus = CalculusFactory::createFromNSCells<2>(digSurf.begin(), digSurf.end());
+  Calculus calculus;
+  calculus.initKSpace<Domain>( domain );
   const KSpace& Kc = calculus.myKSpace; // should not be used.
 
 
@@ -583,7 +583,7 @@ int main( int argc, char** argv )
     complex.insertCell( 2, K.unsigns( *it ) );
   complex.close();
 
-/*  for ( CComplex::CellMapIterator it = complex.begin( 0 ), itE = complex.end( 0 ); it != itE; ++it )
+  for ( CComplex::CellMapIterator it = complex.begin( 0 ), itE = complex.end( 0 ); it != itE; ++it )
     calculus.insertSCell( K.signs( it->first, K.POS ) );
 
   for ( CComplex::CellMapIterator it = complex.begin( 1 ), itE = complex.end( 1 ); it != itE; ++it )
@@ -604,7 +604,7 @@ int main( int argc, char** argv )
       // Dimension k      = K.sOrthDir( surfel );
       // bool      pos    = K.sDirect( surfel, k );
       // calculus.insertSCell( pos ? *it : K.sOpp( *it ) );
-    }*/
+    }
   calculus.updateIndexes();
   trace.info() << calculus << endl;
 
