@@ -76,6 +76,8 @@
 #include "DGtal/math/linalg/EigenSupport.h"
 #include "DGtal/dec/DiscreteExteriorCalculus.h"
 #include "DGtal/dec/DiscreteExteriorCalculusSolver.h"
+#include "DGtal/dec/DiscreteExteriorCalculusFactory.h"
+
 
 // Drawing
 #include "DGtal/io/boards/Board3D.h"
@@ -305,8 +307,8 @@ int main( int argc, char** argv )
   int min           =  vm["min"].as<  int >();
   int max           =  vm["max"].as<  int >();
   const double h    = 1.0; // not pertinent for now.
-  std::ostringstream title_in;  title_in << "Brute normals"; 
-  std::ostringstream title_out; title_out << "AT normals"; 
+  std::ostringstream title_in;  title_in << "Brute normals";
+  std::ostringstream title_out; title_out << "AT normals";
 
   //-----------------------------------------------------------------------------
   // Types.
@@ -399,7 +401,7 @@ int main( int argc, char** argv )
   trace.info() << "- Number of components       = " << vectConnectedSCell.size() << std::endl;
   trace.info() << "- Size biggest component     = " << it_max->size() << std::endl;
   trace.info() << "- Number selected components = " << nb_big << std::endl;
-  
+
   // Surfaces<KSpace>::sMakeBoundary( theSetOfSurfels.surfelSet(),
   //                                  K, noisy_object,
   //                                  domain.lowerBound(),
@@ -441,7 +443,7 @@ int main( int argc, char** argv )
       nt_estimator.setParams( aMetric, surfelFct, fct, t );
       nt_estimator.init( h, digSurf.begin(), digSurf.end());
       nt_estimator.eval( digSurf.begin(), digSurf.end(), std::back_inserter( nt_estimations ) );
-      if ( estimator == "Trivial" ) 
+      if ( estimator == "Trivial" )
         {
           estimations = nt_estimations;
           title_in  << " Nest=Trivial t=" << t;
@@ -500,7 +502,7 @@ int main( int argc, char** argv )
           vcm_estimator.init( h, digSurf.begin(), digSurf.end() );
           vcm_estimator.eval( digSurf.begin(), digSurf.end(), std::back_inserter( estimations ) );
         }
-      else if ( chi == "ball" ) 
+      else if ( chi == "ball" )
         {
           typedef functors::BallConstantPointFunction<Point,double> KernelFunction;
           KernelFunction chi_r( 1.0, r );
@@ -517,7 +519,7 @@ int main( int argc, char** argv )
         }
       trace.endBlock();
     }
-      
+
   //-----------------------------------------------------------------------------
   // Store estimations.
   {
@@ -564,18 +566,26 @@ int main( int argc, char** argv )
   typedef Calculus::DualForm0                                      DualForm0;
   typedef Calculus::DualForm1                                      DualForm1;
   typedef Calculus::DualForm2                                      DualForm2;
+  typedef DGtal::DiscreteExteriorCalculusFactory<EigenLinearAlgebraBackend> CalculusFactory;
   trace.beginBlock( "Creating Discrete Exterior Calculus. " );
-  Calculus calculus;
-  calculus.initKSpace<Domain>( domain );
+
+  Calculus calculus = CalculusFactory::createFromNSCells<2>(digSurf.begin(), digSurf.end());
+
+  //calculus.initKSpace<Domain>( domain );
   const KSpace& Kc = calculus.myKSpace; // should not be used.
+
+
   // Use a cubical complex to find all lower incident cells easily.
   CComplex complex( K );
+
+
   for ( ConstIterator it = digSurf.begin(), itE = digSurf.end(); it != itE; ++it )
     complex.insertCell( 2, K.unsigns( *it ) );
   complex.close();
-  for ( CComplex::CellMapIterator it = complex.begin( 0 ), itE = complex.end( 0 ); it != itE; ++it )
+
+/*  for ( CComplex::CellMapIterator it = complex.begin( 0 ), itE = complex.end( 0 ); it != itE; ++it )
     calculus.insertSCell( K.signs( it->first, K.POS ) );
-  
+
   for ( CComplex::CellMapIterator it = complex.begin( 1 ), itE = complex.end( 1 ); it != itE; ++it )
     {
       SCell     linel = K.signs( it->first, K.POS );
@@ -594,7 +604,7 @@ int main( int argc, char** argv )
       // Dimension k      = K.sOrthDir( surfel );
       // bool      pos    = K.sDirect( surfel, k );
       // calculus.insertSCell( pos ? *it : K.sOpp( *it ) );
-    }
+    }*/
   calculus.updateIndexes();
   trace.info() << calculus << endl;
 
@@ -604,11 +614,11 @@ int main( int argc, char** argv )
   g.push_back( PrimalForm2( calculus ) );
   g.push_back( PrimalForm2( calculus ) );
   Index nb2 = g[ 0 ].myContainer.rows();
-  
+
   for ( Index index = 0; index < nb2; index++)
     {
       const Calculus::SCell& cell = g[ 0 ].getSCell( index );
-      if ( theSetOfSurfels.isInside( cell ) ) 
+      if ( theSetOfSurfels.isInside( cell ) )
         {
           const RealVector&      n    = n_estimations[ cell ];
           g[ 0 ].myContainer( index ) = n[ 0 ];
@@ -673,11 +683,11 @@ int main( int argc, char** argv )
   alpha_g.push_back( alpha_Id2 * g[ 1 ] );
   alpha_g.push_back( alpha_Id2 * g[ 2 ] );
   trace.info() << "lap_operator_v" << endl;
-  
+
   // Do not work well
   // const PrimalIdentity1 lap_operator_v = 0.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 );
   // const PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 );
-  // const PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 
+  // const PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1
   //                                                 + dual_h1 * dual_D0 * primal_h2 * primal_D1 );
   // Good one !
   const PrimalIdentity1 lap_operator_v =
@@ -686,7 +696,7 @@ int main( int argc, char** argv )
     : ( lap == "tAA" ) ? -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1 )
     : -1.0 * ( primal_D0 * dual_h2 * dual_D1 * primal_h1      // BtB+tAA
                + dual_h1 * dual_D0 * primal_h2 * primal_D1 );
-  
+
   // -1.0 * ( dual_h1 * dual_D0 * primal_h2 * primal_D1 );
   // SparseLU is so much faster than SparseQR
   // SimplicialLLT is much faster than SparseLU
@@ -707,7 +717,7 @@ int main( int argc, char** argv )
   double eps      = 2.0 * e;
   const int n     = 5;
   trace.endBlock();
-      
+
   //-----------------------------------------------------------------------------
   // Solving AT functional.
   trace.beginBlock( "Solving AT functional. " );
@@ -731,7 +741,7 @@ int main( int argc, char** argv )
             {
               trace.info() << "Solving (Av2A + alpha_iG0) u[" << d << "] = ag[" << d << "]" << endl;
               u[ d ] = solver_u.solve( alpha_g[ d ] );
-              trace.info() << "  => " << ( solver_u.isValid() ? "OK" : "ERROR" ) 
+              trace.info() << "  => " << ( solver_u.isValid() ? "OK" : "ERROR" )
                            << " " << solver_u.myLinearAlgebraSolver.info() << endl;
             }
           trace.info() << "-------------------------------------------------------------------------------" << endl;
@@ -750,7 +760,7 @@ int main( int argc, char** argv )
           solver_v.compute( V_Id1 );
           trace.info() << "Solving (tu_tA_A_u + BB + Mw2) v = 1/(4eps) * l" << endl;
           v = solver_v.solve( (1.0/eps) * l_sur_4 );
-          trace.info() << "  => " << ( solver_v.isValid() ? "OK" : "ERROR" ) 
+          trace.info() << "  => " << ( solver_v.isValid() ? "OK" : "ERROR" )
                        << " " << solver_v.myLinearAlgebraSolver.info() << endl;
           trace.info() << "-------------------------------------------------------------------------------" << endl;
           trace.endBlock();
@@ -791,7 +801,7 @@ int main( int argc, char** argv )
             }
           n_1 /= v.myContainer.rows();
           n_2 = sqrt( n_2 / v.myContainer.rows() );
-          
+
           trace.info() << "Variation |v^k+1 - v^k|_oo = " << n_infty << endl;
           trace.info() << "Variation |v^k+1 - v^k|_2 = " << n_2 << endl;
           trace.info() << "Variation |v^k+1 - v^k|_1 = " << n_1 << endl;
@@ -813,11 +823,11 @@ int main( int argc, char** argv )
     {
       const SCell& cell    = u[ 0 ].getSCell( index );
       // const RealVector& n  = n_estimations[ cell ];
-      RealVector nr        = RealVector( u[ 0 ].myContainer( index ), 
-                                         u[ 1 ].myContainer( index ), 
+      RealVector nr        = RealVector( u[ 0 ].myContainer( index ),
+                                         u[ 1 ].myContainer( index ),
                                          u[ 2 ].myContainer( index ) );
       nr /= nr.norm();
-      if ( theSetOfSurfels.isInside( cell ) ) 
+      if ( theSetOfSurfels.isInside( cell ) )
         Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerR, cell, nr, false );
       else
         Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerR, K.sOpp( cell ), nr, false );
@@ -848,8 +858,8 @@ int main( int argc, char** argv )
   for ( Index index = 0; index < nb2; index++)
     {
       const SCell& cell    = u[ 0 ].getSCell( index );
-      RealVector nr        = RealVector( u[ 0 ].myContainer( index ), 
-                                         u[ 1 ].myContainer( index ), 
+      RealVector nr        = RealVector( u[ 0 ].myContainer( index ),
+                                         u[ 1 ].myContainer( index ),
                                          u[ 2 ].myContainer( index ) );
       nr /= nr.norm();
       // RealVector w( vx.myContainer( index ), vy.myContainer( index ), vz.myContainer( index ) );
@@ -857,16 +867,16 @@ int main( int argc, char** argv )
       double feature = 2.0 - 2.0 * std::max( 0.0, std::min( 2.0, w.norm() ) );
       feature = std::min( 1.0, feature*feature );
       viewerF.setFillColor( grad( feature ) );
-      if ( theSetOfSurfels.isInside( cell ) ) 
+      if ( theSetOfSurfels.isInside( cell ) )
         Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerF, cell, nr, false );
       else
-        Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerF, K.sOpp( cell ), nr, false );     
+        Display3DFactory<Space,KSpace>::drawOrientedSurfelWithNormal( viewerF, K.sOpp( cell ), nr, false );
     }
   viewerF.setLineColor( Color( 255, 0, 0 ) );
   for ( Index index = 0; index < nb1; index++)
     {
       const SCell& cell    = v.getSCell( index );
-      Dimension    k       = * K.sDirs( cell ); 
+      Dimension    k       = * K.sDirs( cell );
       const SCell  p0      = K.sIncident( cell, k, true );
       const SCell  p1      = K.sIncident( cell, k, false );
       if ( v.myContainer( index ) >= 0.5 ) continue;
