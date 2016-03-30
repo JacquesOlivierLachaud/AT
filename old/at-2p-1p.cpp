@@ -112,7 +112,7 @@ double tronc( const double& nb, const int& p )
 //        //oss3 << f2 << "-l" << tronc_l << "-v.pgm";
 //        oss3 << boost::format("%s-g.pgm") %f2;
 //        string str_image_v = oss3.str();
-//        
+//
 //        dbl_image >> str_image_v.c_str();
 
 
@@ -390,7 +390,7 @@ int main( int argc, char* argv[] )
   
   SolverV solver_lap_operator_v;
   const Calculus::PrimalIdentity1 lap_operator_v = -1.0 * ( primal_D0 * G0 * dual_h2 * dual_D1 * primal_h1 * invG1 
-							                                            + G1 * dual_h1 * dual_D0 * primal_h2 * invG2 * primal_D1 );
+                                                          + G1 * dual_h1 * dual_D0 * primal_h2 * invG2 * primal_D1 );
   solver_lap_operator_v.compute( lap_operator_v );
 
   while ( l1 >= l2 )
@@ -428,7 +428,7 @@ int main( int argc, char* argv[] )
 		    diagv2.myContainer.coeffRef( index, index ) = v.myContainer[ index ] * v.myContainer[ index ];
 				      
 		  const Calculus::PrimalIdentity2 Bv2B = 	(- 1.0 ) * dual_h2 * dual_D1 * primal_h1 * diagv2 * G1 * dual_D1
-		                                         + a * invG2;
+                                                      + a * invG2;
 		  trace.info() << "Prefactoring matrix Av2A" << endl;
 		  solver_u.compute( Av2A );
 		  trace.info() << "Solving Av2A u = ag" << endl;
