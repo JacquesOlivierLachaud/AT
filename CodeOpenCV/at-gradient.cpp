@@ -62,27 +62,32 @@ Mat AT_updateU( Mat u, Mat v, Mat g, float beta )
   const auto rows = u.rows;
   const auto cols = u.cols;
   Mat gu( rows, cols, CV_32FC1, 0.0f );
-  for ( int y = 1; y < rows-1; y++ )
-    for ( int x = 1; x < cols-1; x++ )
+  const auto rows_m_1 = rows-1;
+  const auto cols_m_1 = cols-1;
+  const float two_beta = 2.0 * beta;
+  for ( int y = 1; y < rows_m_1; y++ )
+    for ( int x = 1; x < cols_m_1; x++ )
       {
-        float vw = 0.5*( v.at< float >( y, x ) + v.at< float >( y+1, x ) ); 
-        float ve = 0.5*( v.at< float >( y, x+1 ) + v.at< float >( y+1, x+1 ) ); 
-        float vn = 0.5*( v.at< float >( y, x ) + v.at< float >( y, x+1 ) ); 
-        float vs = 0.5*( v.at< float >( y+1, x ) + v.at< float >( y+1, x+1 ) );
-        float vw2 = sqr( vw );
-        float ve2 = sqr( ve );
-        float vn2 = sqr( vn );
-        float vs2 = sqr( vs );
-        float uxy = u.at< float >( y, x );
-        float left = 2.0 * (1.0 + beta * ( ve2 + vw2 + vn2 + vs2 ) );
-        
-        float right = 2.0 * ( g.at< float >( y, x ) )
-          + 2.0 * beta * ( ve2 * ( u.at< float >( y, x+1 ) )
-                           + vw2 * ( u.at< float >( y, x-1 ) )
-                           + vn2 * ( u.at< float >( y-1, x ) )
-                           + vs2 * ( u.at< float >( y+1, x ) ) );
-        float nuxy = right / left;
-        gu.at< float >( y, x ) = nuxy;
+        const float v_x_y     = v.at< float >( y, x );
+        const float v_xp1_y   = v.at< float >( y, x+1 );
+        const float v_x_yp1   = v.at< float >( y+1, x );
+        const float v_xp1_yp1 = v.at< float >( y+1, x+1 );
+        const float vw = 0.5*( v_x_y + v_x_yp1 );
+        const float ve = 0.5*( v_xp1_y + v_xp1_yp1 );
+        const float vn = 0.5*( v_x_y + v_xp1_y );
+        const float vs = 0.5*( v_x_yp1 + v_xp1_yp1 );
+        const float vw2 = sqr( vw );
+        const float ve2 = sqr( ve );
+        const float vn2 = sqr( vn );
+        const float vs2 = sqr( vs );
+        //const float uxy = u.at< float >( y, x );
+        const float left = 2.0 + two_beta * ( ve2 + vw2 + vn2 + vs2 );
+        const float right = 2.0 * ( g.at< float >( y, x ) )
+          + two_beta * ( ve2 * ( u.at< float >( y, x+1 ) )
+                         + vw2 * ( u.at< float >( y, x-1 ) )
+                         + vn2 * ( u.at< float >( y-1, x ) )
+                         + vs2 * ( u.at< float >( y+1, x ) ) );
+        gu.at< float >( y, x ) = right / left;
       }
   return gu;
 }
