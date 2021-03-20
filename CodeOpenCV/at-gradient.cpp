@@ -1,6 +1,7 @@
 #include <iostream>
 #include "opencv2/imgproc.hpp"
 #include "opencv2/highgui.hpp"
+#include "Clock.h"
 
 using namespace cv;
 
@@ -142,29 +143,35 @@ Mat AT_updateV( Mat u, Mat v, Mat g, float beta, float lambda, float epsilon )
   const auto rows = v.rows;
   const auto cols = v.cols;
   Mat gv( rows, cols, CV_32FC1, 0.0f );
-  for ( int y = 1; y < rows-1; y++ )
-    for ( int x = 1; x < cols-1; x++ )
+  const auto rows_m_1 = rows-1;
+  const auto cols_m_1 = cols-1;
+  const float half_b  = 0.5 * beta;
+  const float left_le = 8.0 * lambda * epsilon + lambda / ( 2.0 * epsilon );
+  const float  two_le = 2.0 * lambda * epsilon;
+  const float l_sur_2e = lambda / ( 2.0 * epsilon );
+  for ( int y = 1; y < rows_m_1; y++ )
+    for ( int x = 1; x < cols_m_1; x++ )
       {
-        float ue = ( u.at< float >( y, x ) - u.at< float >( y-1, x ) ); 
-        float uw = ( u.at< float >( y, x-1 ) - u.at< float >( y-1, x-1 ) ); 
-        float un = ( u.at< float >( y-1, x ) - u.at< float >( y-1, x-1 ) ); 
-        float us = ( u.at< float >( y, x ) - u.at< float >( y, x-1 ) ); 
-        float ue2 = sqr( ue ); 
-        float uw2 = sqr( uw ); 
-        float un2 = sqr( un ); 
-        float us2 = sqr( us );
-        float left = ( 0.5 * beta * ( ue2 + uw2 + un2 + us2 )
-                       + 8.0 * lambda * epsilon
-                       + lambda / ( 2.0 * epsilon ) );
-        float right = -0.5 * beta * ( v.at< float >( y, x+1 ) * ue2
-                                      + v.at< float >( y, x-1 ) * uw2 
-                                      + v.at< float >( y-1, x ) * un2 
-                                      + v.at< float >( y+1, x ) * us2 )
-          + 2.0 * lambda * epsilon * ( v.at< float >( y, x+1 )
-                                       + v.at< float >( y, x-1 )
-                                       + v.at< float >( y-1, x )
-                                       + v.at< float >( y+1, x ) )
-          + lambda  / ( 2.0 * epsilon );
+        const float u_xm1_ym1 = u.at< float >( y-1, x-1 );
+        const float u_x_ym1   = u.at< float >( y-1, x );
+        const float u_xm1_y   = u.at< float >( y, x-1 );
+        const float u_x_y     = u.at< float >( y, x );
+        const float ue = u_x_y - u_x_ym1;
+        const float uw = u_xm1_y - u_xm1_ym1;
+        const float un = u_x_ym1 - u_xm1_ym1;
+        const float us = u_x_y - u_xm1_y;
+        const float ue2 = sqr( ue ); 
+        const float uw2 = sqr( uw ); 
+        const float un2 = sqr( un ); 
+        const float us2 = sqr( us );
+        const float left= half_b * ( ue2 + uw2 + un2 + us2 ) + left_le;
+        const float ve = v.at< float >( y, x+1 );
+        const float vw = v.at< float >( y, x-1 );
+        const float vn = v.at< float >( y-1, x );
+        const float vs = v.at< float >( y+1, x );
+        const float right = -half_b * ( ve * ue2 + vw * uw2 + vn * un2 + vs * us2 )
+                             + two_le * ( ve + vw + vn + vs )
+                             + l_sur_2e;
         gv.at< float >( y, x ) = right / left;
       }
   return gv;
@@ -214,14 +221,14 @@ AT_optimizeUV( Mat u, Mat v, Mat g,
   for ( int i = 0; i < max_iter; ++i )
     {
       norm = AT_optimizeU( u, v, g, beta, lambda, epsilon, gamma );
-      std::cout << "||u^(k+1)-u^(k)||_2 = " << norm << std::endl;
+      // std::cout << "||u^(k+1)-u^(k)||_2 = " << norm << std::endl;
       if ( norm < 0.0001 ) break;
     }
   total_norm += norm;
   for ( int i = 0; i < max_iter; ++i )
     {
       norm = AT_optimizeV( u, v, g, beta, lambda, epsilon, gamma );
-      std::cout << "||v^(k+1)-v^(k)||_2 = " << norm << std::endl;
+      // std::cout << "||v^(k+1)-v^(k)||_2 = " << norm << std::endl;
       if ( norm < 0.0001 ) break;
     }
   total_norm += norm;
@@ -246,6 +253,7 @@ int main( int argc, char* argv[] )
   namedWindow("V", WINDOW_NORMAL );
   int ibeta = 50;
   int ilambda = 5;
+  int ilambda_100 = 0;
   int iepsilon1 = 400;
   int iepsilon2 = 50;
   int igamma = 50;
@@ -254,38 +262,53 @@ int main( int argc, char* argv[] )
   createTrackbar("max_iter", "U", &max_iter, 100, NULL );
   createTrackbar("beta (en %)", "U", &ibeta, 1000, NULL );
   createTrackbar("lambda (en %)", "V", &ilambda, 100, NULL );
+  createTrackbar("lambda (en %%)", "V", &ilambda_100, 100, NULL );
   createTrackbar("epsilon1 (en %)", "V", &iepsilon1, 500, NULL );
   createTrackbar("epsilon2 (en %)", "V", &iepsilon2, 500, NULL );
   Mat g, u, v;
   std::tie( g, u, v ) = AT_create( gray_input );
   float epsilon = iepsilon1 / 100.0;
+  bool display = true;
   bool compute = true;
+  Clock T;
+  T.startClock();
   for(;;)
     {
       float beta = ibeta / 100.0;
-      float lambda = ilambda / 100.0;
+      float lambda = ilambda / 100.0 + ilambda_100/ 10000.0;
       float epsilon1 = iepsilon1 / 100.0;
       float epsilon2 = iepsilon2 / 100.0;
       float gamma = igamma / 100.0;
       int keycode = waitKey(100);
       char ascii  = keycode & 0xFF;  
       if ( ascii == 'q' ) break;
-      else if ( ascii == 'c' ) {
+      else if ( ascii == 'd' ) {
+        display = ! display;
+      } else if ( ascii == 'c' ) {
         compute = true;
         epsilon = epsilon1;
+        T.startClock();
       } else if ( ascii == 'i' )
         std::tie( g, u, v ) = AT_create( gray_input );
-      imshow("U", u);
-      imshow("V", v);
+      if ( display ) {
+        imshow("U", u);
+        imshow("V", v);
+      }
       float norm  = 0.0;
       if ( compute ) {
         std::cout << "*********** epsilon = " << epsilon << std::endl;
         norm = AT_optimizeUV( u, v, g, beta, lambda, epsilon, gamma, max_iter );
         std::cout << "     ||u^(k+1)-u^(k)||_2 + ||v^(k+1)-v^(k)||_2 = "
                   << norm << std::endl;
-        if ( norm < 0.0001 && epsilon == epsilon2 )
+        if ( norm < 0.0001 && epsilon == epsilon2 ) {
+          double t = T.stopClock();
           compute = false;
-        else if ( norm < 0.001 )
+          std::cout << " ... in " << t << " ms." << std::endl;
+          if ( ! display ) {
+            imshow("U", u);
+            imshow("V", v);
+          }
+        } else if ( norm < 0.001 )
           epsilon = std::max( 0.75f * epsilon, epsilon2 );
       }
     }
