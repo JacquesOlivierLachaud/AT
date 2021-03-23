@@ -16,8 +16,8 @@ const float moy[ 10 ][ 10 ] = {
   { 0.25, 0.5, 0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 },
   { 0.1, 0.2, 0.4, 0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0 },
   { 0.1, 0.2, 0.4, 0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0 },
-  { 0.05, 0.1, 0.2, 0.35, 0.2, 0.1, 0.05, 0.0, 0.0, 0.0 },
-  { 0.05, 0.1, 0.2, 0.35, 0.2, 0.1, 0.05, 0.0, 0.0, 0.0 },
+  { 0.05, 0.08, 0.2, 0.34, 0.2, 0.08, 0.05, 0.0, 0.0, 0.0 },
+  { 0.05, 0.08, 0.2, 0.34, 0.2, 0.08, 0.05, 0.0, 0.0, 0.0 },
   { 0.02, 0.04, 0.08, 0.18, 0.36, 0.18, 0.08, 0.04, 0.02, 0.0 },
   { 0.02, 0.04, 0.08, 0.18, 0.36, 0.18, 0.08, 0.04, 0.02, 0.0 }
 };
@@ -193,14 +193,12 @@ Mat AT_updateV( Mat u, Mat v, float beta, float lambda, float epsilon )
   Mat gv( rows, cols, CV_32FC1, 0.0f );
   const auto rows_m_1 = rows-1;
   const auto cols_m_1 = cols-1;
-  const float  left_b = 0.5 * ( 1.0 + sqrt( 2.0 ) ) * beta;
-  const float right_b = 0.25 * beta;
   const float half_b  = 0.5 * beta;
-  const float left_le = 4.0 * lambda * epsilon * ( 1 + sqrt(2.0)/2.0 )
-    + lambda / ( 2.0 * epsilon );
-  const float  two_le = 1.0 * lambda * epsilon;
-  const float l_sur_2e = lambda / ( 2.0 * epsilon );
   const float  diag_c = sqrt(2.0) / 2.0; 
+  const float left_le = 4.0 * lambda * epsilon * ( 1.0 + diag_c )
+    + lambda / ( 2.0 * epsilon );
+  const float right_le = 1.0 * lambda * epsilon;
+  const float l_sur_2e = lambda / ( 2.0 * epsilon );
   for ( int y = 1; y < rows_m_1; y++ )
     for ( int x = 1; x < cols_m_1; x++ )
       {
@@ -227,7 +225,7 @@ Mat AT_updateV( Mat u, Mat v, float beta, float lambda, float epsilon )
         const float vse = v.at< float >( y+1, x+1 );
         const float right =
           -half_b * ( ve * ue2 + vw * uw2 + vn * un2 + vs * us2 ) // todo
-          + two_le * ( ve + vw + vn + vs
+          + right_le * ( ve + vw + vn + vs
                        + diag_c * ( vne + vnw + vse + vsw ) )
           + l_sur_2e;
         gv.at< float >( y, x ) = std::min( 1.0f, std::max( 0.0f, right / left ) );
@@ -312,14 +310,14 @@ int main( int argc, char* argv[] )
   namedWindow("U", WINDOW_NORMAL ); //WINDOW_AUTOSIZE);
   namedWindow("V", WINDOW_NORMAL );
   int ibeta = 250;
-  int ilambda = 2;
-  int ilambda_100 = 50;
+  int ilambda = 1;
+  int ilambda_100 = 80;
   int iepsilon1 = 800;
   int iepsilon2 = 25;
-  int igamma = 10;
+  int igamma = 20;
   int max_iter = 30;
   int k = argc >= 3 ? atoi( argv[ 2 ] ) : 4;
-  createTrackbar("gamma (en %)", "U", &igamma, 100, NULL );
+  createTrackbar("gamma (en 1/1000)", "U", &igamma, 1000, NULL );
   createTrackbar("max_iter", "U", &max_iter, 100, NULL );
   createTrackbar("beta (en %)", "U", &ibeta, 1000, NULL );
   createTrackbar("lambda (en %)", "V", &ilambda, 100, NULL );
@@ -339,7 +337,7 @@ int main( int argc, char* argv[] )
       float lambda = ilambda / 100.0 + ilambda_100/ 10000.0;
       float epsilon1 = iepsilon1 / 100.0;
       float epsilon2 = iepsilon2 / 100.0;
-      float gamma = igamma / 100.0;
+      float gamma = igamma / 1000.0;
       int keycode = waitKey(100);
       char ascii  = keycode & 0xFF;  
       if ( ascii == 'q' ) break;
@@ -352,6 +350,9 @@ int main( int argc, char* argv[] )
       } else if ( ascii == 'i' )
         std::tie( gx, gy, u, v ) = AT_create( gray_input, k );
       if ( display ) {
+        //Mat nu;
+        //cv::normalize( u, nu, 0, 1, cv::NORM_MINMAX);
+        //imshow("U", nu);
         imshow("U", u);
         imshow("V", v);
       }
