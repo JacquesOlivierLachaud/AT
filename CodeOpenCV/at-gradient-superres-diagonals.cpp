@@ -149,7 +149,7 @@ Mat AT_updateU( Mat u, Mat v, Mat gx, Mat gy, int k, float beta )
         const float vne2 = sqr( v_xp1_y );
         const float vsw2 = sqr( v_x_yp1 );
         const float vse2 = sqr( v_xp1_yp1 );
-        const float left = 2.0 * moy[ k ][ k_div_2 ]
+        const float left = 4.0 * moy[ k ][ k_div_2 ]
           + beta * ( ve2 + vw2 + vn2 + vs2 )
           + diag_beta * ( vnw2 + vne2 + vsw2 + vse2 );
         const float right = 2.0 * ( gx.at< float >( y, x )
@@ -170,7 +170,8 @@ Mat AT_updateU( Mat u, Mat v, Mat gx, Mat gy, int k, float beta )
           }
         }
         gu.at< float >( y, x )
-          = std::min( 1.0f, std::max( 0.0f, (right + 2.0f * right_h) / left ) );
+          = ( right + 2.0f * right_h) / left;
+        // = std::min( 1.0f, std::max( 0.0f, (right + 2.0f * right_h) / left ) );
       }
   }
   return gu;
@@ -224,11 +225,12 @@ Mat AT_updateV( Mat u, Mat v, float beta, float lambda, float epsilon )
         const float vsw = v.at< float >( y+1, x-1 );
         const float vse = v.at< float >( y+1, x+1 );
         const float right =
-          -half_b * ( ve * ue2 + vw * uw2 + vn * un2 + vs * us2 ) // todo
+          - half_b * ( ve * ue2 + vw * uw2 + vn * un2 + vs * us2 )
           + right_le * ( ve + vw + vn + vs
                        + diag_c * ( vne + vnw + vse + vsw ) )
           + l_sur_2e;
-        gv.at< float >( y, x ) = std::min( 1.0f, std::max( 0.0f, right / left ) );
+        gv.at< float >( y, x ) = right / left;
+        // = std::min( 1.0f, std::max( 0.0f, right / left ) );
       }
   return gv;
 }
@@ -314,10 +316,10 @@ int main( int argc, char* argv[] )
   int ilambda_100 = 80;
   int iepsilon1 = 800;
   int iepsilon2 = 25;
-  int igamma = 20;
+  int igamma = 50;
   int max_iter = 30;
   int k = argc >= 3 ? atoi( argv[ 2 ] ) : 4;
-  createTrackbar("gamma (en 1/1000)", "U", &igamma, 1000, NULL );
+  createTrackbar("gamma (en 1/100)", "U", &igamma, 100, NULL );
   createTrackbar("max_iter", "U", &max_iter, 100, NULL );
   createTrackbar("beta (en %)", "U", &ibeta, 1000, NULL );
   createTrackbar("lambda (en %)", "V", &ilambda, 100, NULL );
