@@ -311,9 +311,9 @@ int main( int argc, char* argv[] )
     }
   namedWindow("U", WINDOW_NORMAL ); //WINDOW_AUTOSIZE);
   namedWindow("V", WINDOW_NORMAL );
-  int ibeta = 250;
+  int ibeta = 400;
   int ilambda = 1;
-  int ilambda_100 = 80;
+  int ilambda_100 = 00;
   int iepsilon1 = 800;
   int iepsilon2 = 25;
   int igamma = 50;

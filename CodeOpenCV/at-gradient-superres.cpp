@@ -143,7 +143,7 @@ Mat AT_updateU( Mat u, Mat v, Mat gx, Mat gy, int k, float beta )
         const float ve2 = sqr( ve );
         const float vn2 = sqr( vn );
         const float vs2 = sqr( vs );
-        const float left = 2.0 * moy[ k ][ k_div_2 ]
+        const float left = 4.0 * moy[ k ][ k_div_2 ]
           + two_beta * ( ve2 + vw2 + vn2 + vs2 );
         const float right = 2.0 * ( gx.at< float >( y, x )
                                     + gy.at< float >( y, x ) )
@@ -159,7 +159,8 @@ Mat AT_updateU( Mat u, Mat v, Mat gx, Mat gy, int k, float beta )
           }
         }
         gu.at< float >( y, x )
-          = std::min( 1.0f, std::max( 0.0f, (right + 2.0f * right_h) / left ) );
+          = (right + 2.0f * right_h) / left;
+        //= std::min( 1.0f, std::max( 0.0f, (right + 2.0f * right_h) / left ) );
       }
   }
   return gu;
@@ -209,7 +210,9 @@ Mat AT_updateV( Mat u, Mat v, float beta, float lambda, float epsilon )
         const float right = -half_b * ( ve * ue2 + vw * uw2 + vn * un2 + vs * us2 )
                              + two_le * ( ve + vw + vn + vs )
                              + l_sur_2e;
-        gv.at< float >( y, x ) = std::min( 1.0f, std::max( 0.0f, right / left ) );
+        gv.at< float >( y, x )
+          = right / left;
+        // = std::min( 1.0f, std::max( 0.0f, right / left ) );
       }
   return gv;
 }
@@ -290,12 +293,12 @@ int main( int argc, char* argv[] )
     }
   namedWindow("U", WINDOW_NORMAL ); //WINDOW_AUTOSIZE);
   namedWindow("V", WINDOW_NORMAL );
-  int ibeta = 250;
-  int ilambda = 2;
-  int ilambda_100 = 50;
+  int ibeta = 400;
+  int ilambda = 1;
+  int ilambda_100 = 00;
   int iepsilon1 = 800;
   int iepsilon2 = 25;
-  int igamma = 10;
+  int igamma = 50;
   int max_iter = 30;
   int k = argc >= 3 ? atoi( argv[ 2 ] ) : 4;
   createTrackbar("gamma (en %)", "U", &igamma, 100, NULL );
