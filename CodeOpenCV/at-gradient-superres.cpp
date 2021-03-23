@@ -5,6 +5,10 @@
 
 using namespace cv;
 
+// PSF toute simple, faite "a la mano"
+// le premier indice est le "k" du sous-échantillonnage
+// le deuxième indice donne les coefficients par ligne ou colonne
+// 0: -k/2  ---> k: k/2
 const float moy[ 10 ][ 10 ] = {
   { 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 },
   { 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 },
@@ -25,12 +29,13 @@ Mat subsampleX( Mat g, int k )
   int ncols = cols / k;
   Mat gx( rows, ncols, CV_32FC1, 0.0f );
   const int k_div_2 = k / 2;
+  const int lk      = 2 * k_div_2 + 1; 
   for ( int y = 0; y < rows; y++ )
     for ( int x = 0; x < ncols; x++ )
       {
         float sum_v = 0.0;
         float sum_c = 0.0;
-        for ( int i = 0; i < k; ++i ) {
+        for ( int i = 0; i < lk; ++i ) {
           const int tx = k*x + i - k_div_2; 
           if ( tx >= 0 && tx < cols ) {
             sum_v += moy[ k ][ i ] * g.at< float >( y, tx );
@@ -51,12 +56,13 @@ Mat subsampleY( Mat g, int k )
   int nrows = rows / k;
   Mat gy( nrows, cols, CV_32FC1, 0.0f );
   const int k_div_2 = k / 2;
+  const int lk      = 2 * k_div_2 + 1; 
   for ( int y = 0; y < nrows; y++ )
     for ( int x = 0; x < cols; x++ )
       {
         float sum_v = 0.0;
         float sum_c = 0.0;
-        for ( int i = 0; i < k; ++i ) {
+        for ( int i = 0; i < lk; ++i ) {
           const int ty = k*y + i - k_div_2; 
           if ( ty >= 0 && ty < rows ) {
             sum_v += moy[ k ][ i ] * g.at< float >( ty, x );
@@ -114,25 +120,17 @@ Mat AT_updateU( Mat u, Mat v, Mat gx, Mat gy, int k, float beta )
   const auto rows = u.rows;
   const auto cols = u.cols;
   const int k_div_2 = k / 2;
-  const float   c = 1.0f / (float) k;
   Mat gu( rows, cols, CV_32FC1, 0.0f );
   const auto rows_m_1 = rows-1;
   const auto cols_m_1 = cols-1;
   const float two_beta = 2.0 * beta;
-  const float two_c    = 2 * c;
   const int by = std::max( 1, k_div_2 );
   const int ey = std::min( rows_m_1, rows - k_div_2 );
   const int bx = std::max( 1, k_div_2 );
   const int ex = std::min( cols_m_1, cols - k_div_2 );
   for ( int y = by; y < ey; y++ ) {
-    const int yk = y / k;
-    const int ny = yk * k;
-    const int yi = y % k;
     for ( int x = bx; x < ex; x++ )
       {
-        const int   xk = x / k;
-        const int   nx = xk * k;
-        const int   xi = x % k;
         const float v_x_y     = v.at< float >( y, x );
         const float v_xp1_y   = v.at< float >( y, x+1 );
         const float v_x_yp1   = v.at< float >( y+1, x );
@@ -145,7 +143,6 @@ Mat AT_updateU( Mat u, Mat v, Mat gx, Mat gy, int k, float beta )
         const float ve2 = sqr( ve );
         const float vn2 = sqr( vn );
         const float vs2 = sqr( vs );
-        //const float uxy = u.at< float >( y, x );
         const float left = 2.0 * moy[ k ][ k_div_2 ]
           + two_beta * ( ve2 + vw2 + vn2 + vs2 );
         const float right = 2.0 * ( gx.at< float >( y, x )
