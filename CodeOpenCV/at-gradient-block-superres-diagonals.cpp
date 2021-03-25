@@ -125,10 +125,10 @@ Mat AT_updateU( Mat u, Mat v, Mat gx, Mat gy, int k, float beta )
   const float c = 1.0f / (float) k;
   const float diag_c   = sqrt( 2.0f ) / 2.0f;
   const float diag_beta = beta * diag_c;
-  const int by = k; //1; //std::max( 1, k_div_2 );
-  const int ey = rows - k; //rows_m_1; //std::min( rows_m_1, rows - k_div_2 );
-  const int bx = k; //std::max( 1, k_div_2 );
-  const int ex = cols - k; //cols_m_1; //std::min( cols_m_1, cols - k_div_2 );
+  const int by = 1; //k
+  const int ey = rows - 1; //rows - k
+  const int bx = 1; //k
+  const int ex = cols - 1; //cols - k
   for ( int y = by; y < ey; y++ ) {
     const int yk = y / k;
     const int iy = y % k;
@@ -242,10 +242,10 @@ Mat AT_updateV( Mat u, Mat v, int k, float beta, float lambda, float epsilon )
     + lambda / ( 2.0 * epsilon );
   const float right_le = 1.0 * lambda * epsilon;
   const float l_sur_2e = lambda / ( 2.0 * epsilon );
-  const int by = k; //1; //std::max( 1, k_div_2 );
-  const int ey = rows - k; //rows_m_1; //std::min( rows_m_1, rows - k_div_2 );
-  const int bx = k; //std::max( 1, k_div_2 );
-  const int ex = cols - k; //cols_m_1; //std::min( cols_m_1, cols - k_div_2 );
+  const int by = k; //k
+  const int ey = rows - k; //rows - k
+  const int bx = k; //k
+  const int ex = cols - k; //cols - k
   for ( int y = by; y < ey; y++ ) 
     for ( int x = bx; x < ex; x++ )
       {
