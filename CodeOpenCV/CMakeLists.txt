@@ -6,6 +6,7 @@ include_directories( ${OpenCV_INCLUDE_DIRS} )
 
 SET( MAIN_EXEC
      at-gradient-block-superres-diagonals
+     at-gradient-color-block-superres-diagonals
      at-gradient-superres-diagonals
      at-gradient-superres
      at-gradient )

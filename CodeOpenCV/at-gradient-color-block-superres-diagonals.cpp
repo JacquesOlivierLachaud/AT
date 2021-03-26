@@ -6,7 +6,9 @@
 using namespace cv;
 
 typedef float Real;
+typedef Vec3f Value;
 #define CVRealImageC1 CV_32FC1
+#define CVRealImageC3 CV_32FC3
 // typedef double Real;
 // #define CVRealImageC1 CV_64FC1
 
@@ -16,17 +18,17 @@ Mat subsampleX( Mat g, int k )
   auto rows = g.rows;
   auto cols = g.cols;
   int ncols = cols / k;
-  Mat gx( rows, ncols, CVRealImageC1, 0.0f );
+  Mat gx( rows, ncols, CVRealImageC3, 0.0f );
   for ( int y = 0; y < rows; y++ )
     for ( int x = 0; x < ncols; x++ )
       {
-        Real sum_v = 0.0;
+        Value sum_v = 0.0;
         Real sum_c = 0.0;
         for ( int i = 0; i < k; ++i ) {
-          sum_v += 1.0 * g.at< Real >( y, k*x+i );
+          sum_v += 1.0 * g.at< Value >( y, k*x+i );
           sum_c += 1.0;
         }
-        gx.at< Real >( y, x ) = sum_v / sum_c;
+        gx.at< Value >( y, x ) = sum_v / sum_c;
       }
   return gx;
 }
@@ -36,19 +38,19 @@ Mat subsampleY( Mat g, int k )
   auto rows = g.rows;
   auto cols = g.cols;
   int nrows = rows / k;
-  Mat gy( nrows, cols, CVRealImageC1, 0.0f );
+  Mat gy( nrows, cols, CVRealImageC3, 0.0f );
   //const int k_div_2 = k / 2;
   //const int lk      = 2 * k_div_2 + 1; 
   for ( int y = 0; y < nrows; y++ )
     for ( int x = 0; x < cols; x++ )
       {
-        Real sum_v = 0.0;
+        Value sum_v = { 0.0, 0.0, 0.0 };
         Real sum_c = 0.0;
         for ( int i = 0; i < k; ++i ) {
-          sum_v += 1.0 * g.at< Real >( k*y+i, x );
+          sum_v += 1.0 * g.at< Value >( k*y+i, x );
           sum_c += 1.0;
         }
-        gy.at< Real >( y, x ) = sum_v / sum_c;
+        gy.at< Value >( y, x ) = sum_v / sum_c;
       }
   //Mat output;
   //resize( gy, output, Size( cols, rows ) ); // linear interpolation by default
@@ -59,14 +61,14 @@ Mat initU( Mat sx, Mat sy, int k )
 {
   auto rows = sx.rows;
   auto cols = sy.cols;
-  Mat u( rows, cols, CVRealImageC1, 0.0f );
+  Mat u( rows, cols, CVRealImageC3, 0.0f );
   Mat ix, iy;
   resize( sx, ix, Size( cols, rows ), 0.0, 0.0, INTER_NEAREST ); // linear interpolation by default
   resize( sy, iy, Size( cols, rows ), 0.0, 0.0, INTER_NEAREST ); // linear interpolation by default
   for ( int y = 0; y < rows; y++ )
     for ( int x = 0; x < cols; x++ )
-      u.at< Real >( y, x ) = 0.5 * ( ix.at< Real >( y, x )
-                                      + iy.at< Real >( y, x ) );
+      u.at< Value >( y, x ) = 0.5 * ( ix.at< Value >( y, x )
+                                      + iy.at< Value >( y, x ) );
   return u;
 }
 
@@ -80,7 +82,7 @@ AT_create( Mat input, int k )
   int ncols = ( cols / k ) * k;
   Mat ninput = input( Rect( 0, 0, ncols, nrows ) );
   Mat g;
-  ninput.convertTo( g, CVRealImageC1, 1/255.0);
+  ninput.convertTo( g, CVRealImageC3, 1/255.0);
   Mat gx = subsampleX( g, k );
   Mat gy = subsampleY( g, k );
   Mat u  = initU( gx, gy, k );
@@ -88,7 +90,8 @@ AT_create( Mat input, int k )
   return std::make_tuple( gx, gy, u, v );
 }
 
-inline Real sqr( Real x ) { return x*x; }
+inline Real sqr( Real x )  { return x*x; }
+inline Real sqr( Value x ) { return sqr( x[ 0 ] ) + sqr( x[ 1 ] ) + sqr( x[ 2 ] ); }
 
 
 Mat AT_updateU( Mat u, Mat v, Mat gx, Mat gy, int k, Real beta )
@@ -103,7 +106,8 @@ Mat AT_updateU( Mat u, Mat v, Mat gx, Mat gy, int k, Real beta )
   const auto rows = u.rows;
   const auto cols = u.cols;
   const int k_div_2 = k / 2;
-  Mat gu( rows, cols, CVRealImageC1, 0.0f );
+  const Value zero = { 0.0f, 0.0f, 0.0f };
+  Mat gu( rows, cols, CVRealImageC3, zero );
   const auto rows_m_1 = rows-1;
   const auto cols_m_1 = cols-1;
   const Real two_beta = 2.0 * beta;
@@ -141,26 +145,26 @@ Mat AT_updateU( Mat u, Mat v, Mat gx, Mat gy, int k, Real beta )
         const Real left = beta * ( ve2 + vw2 + vn2 + vs2 )
           + diag_beta * ( vnw2 + vne2 + vsw2 + vse2 );
         
-        Real  left_h = 0.0;
-        Real right_h = 0.0;
+        Real   left_h = 0.0;
+        Value right_h = 0.0;
         for ( int i = 0; i < k; i++ ) {
           if ( i == ix ) left_h += c;
-          else right_h -= c* u.at< Real >( y, xk * k + i );
+          else right_h -= c* u.at< Value >( y, xk * k + i );
           if ( i == iy ) left_h += c;
-          else right_h -= c* u.at< Real >( yk * k + i, x );
+          else right_h -= c* u.at< Value >( yk * k + i, x );
         }
-        const Real right = 2.0 * ( gx.at< Real >( y, xk )
-                                    + gy.at< Real >( yk, x ) )
-          + beta * ( ve2 * ( u.at< Real >( y, x+1 ) )
-                     + vw2 * ( u.at< Real >( y, x-1 ) )
-                     + vn2 * ( u.at< Real >( y-1, x ) )
-                     + vs2 * ( u.at< Real >( y+1, x ) ) )
-          + diag_beta * ( vnw2 * u.at< Real >( y-1, x-1 )
-                          + vne2 * u.at< Real >( y-1, x+1 )
-                          + vsw2 * u.at< Real >( y+1, x-1 )
-                          + vse2 * u.at< Real >( y+1, x+1 ) );
-        const Real val = ( right + 2.0f * right_h) / (left + 2.0 * left_h);
-        gu.at< Real >( y, x ) = val;
+        const Value right = 2.0 * ( gx.at< Value >( y, xk )
+                                    + gy.at< Value >( yk, x ) )
+          + beta * ( ve2 * ( u.at< Value >( y, x+1 ) )
+                     + vw2 * ( u.at< Value >( y, x-1 ) )
+                     + vn2 * ( u.at< Value >( y-1, x ) )
+                     + vs2 * ( u.at< Value >( y+1, x ) ) )
+          + diag_beta * ( vnw2 * u.at< Value >( y-1, x-1 )
+                          + vne2 * u.at< Value >( y-1, x+1 )
+                          + vsw2 * u.at< Value >( y+1, x-1 )
+                          + vse2 * u.at< Value >( y+1, x+1 ) );
+        const Value val = ( right + 2.0f * right_h) / (left + 2.0 * left_h);
+        gu.at< Value >( y, x ) = val;
       }
   }
   return gu;
@@ -197,14 +201,14 @@ Mat AT_updateV( Mat u, Mat v, int k, Real beta, Real lambda, Real epsilon )
   for ( int y = by; y < ey; y++ ) 
     for ( int x = bx; x < ex; x++ )
       {
-        const Real u_xm1_ym1 = u.at< Real >( y-1, x-1 );
-        const Real u_x_ym1   = u.at< Real >( y-1, x );
-        const Real u_xm1_y   = u.at< Real >( y, x-1 );
-        const Real u_x_y     = u.at< Real >( y, x );
-        const Real ue = u_x_y - u_x_ym1;
-        const Real uw = u_xm1_y - u_xm1_ym1;
-        const Real un = u_x_ym1 - u_xm1_ym1;
-        const Real us = u_x_y - u_xm1_y;
+        const Value u_xm1_ym1 = u.at< Value >( y-1, x-1 );
+        const Value u_x_ym1   = u.at< Value >( y-1, x );
+        const Value u_xm1_y   = u.at< Value >( y, x-1 );
+        const Value u_x_y     = u.at< Value >( y, x );
+        const Value ue = u_x_y - u_x_ym1;
+        const Value uw = u_xm1_y - u_xm1_ym1;
+        const Value un = u_x_ym1 - u_xm1_ym1;
+        const Value us = u_x_y - u_xm1_y;
         const Real ue2 = sqr( ue ); 
         const Real uw2 = sqr( uw ); 
         const Real un2 = sqr( un ); 
@@ -232,16 +236,20 @@ Real AT_optimizeU( Mat u, Mat v, Mat gx, Mat gy, int k,
                     Real beta, Real lambda, Real epsilon, Real gamma )
 {
   Mat old_u = u.clone();
+  //std::cout << "UpdateU" << std::endl;
   Mat new_u = AT_updateU( u, v, gx, gy, k, beta );
+  //std::cout << "addWeighted" << std::endl;
+  Value zero { 0.0, 0.0, 0.0 };
   addWeighted( new_u, gamma, old_u, 1.0-gamma, 0.0, u);
   old_u -= u;
   Real norm = 0.0;
   int nb = 0;
-  for ( auto it = old_u.begin<Real>(), itE = old_u.end<Real>(); it != itE; ++it ) {
-    norm += (*it) * (*it);
+  //std::cout << "ComputeNormDu" << std::endl;
+  for ( auto it = old_u.begin<Value>(), itE = old_u.end<Value>(); it != itE; ++it ) {
+    norm += sqr( *it );
     nb   += 1;
   }
-  return sqrt( norm / (Real) nb );
+  return sqrt( norm / (Real) (3.0f*nb) );
 }
 
 Real AT_optimizeV( Mat u, Mat v, Mat gx, Mat gy, int k,
@@ -296,9 +304,9 @@ int main( int argc, char* argv[] )
       printf("usage: %s <image> <k>\n", argv[ 0 ]);
       return -1;
     }
-  Mat gray_input;
-  gray_input = imread( argv[1], IMREAD_GRAYSCALE ); //IMREAD_COLOR );
-  if ( ! gray_input.data )
+  Mat color_input;
+  color_input = imread( argv[1], IMREAD_COLOR );
+  if ( ! color_input.data )
     {
       printf("No image data \n");
       return -1;
@@ -318,10 +326,10 @@ int main( int argc, char* argv[] )
   createTrackbar("beta (en %)", "U", &ibeta, 1000, NULL );
   createTrackbar("lambda (en %)", "V", &ilambda, 100, NULL );
   createTrackbar("lambda (en %%)", "V", &ilambda_100, 100, NULL );
-  createTrackbar("epsilon1 (en %)", "V", &iepsilon1, 1000, NULL );
+  createTrackbar("epsilon1 (en %)", "V", &iepsilon1, 2000, NULL );
   createTrackbar("epsilon2 (en %)", "V", &iepsilon2, 500, NULL );
   Mat gx, gy, u, v;
-  std::tie( gx, gy, u, v ) = AT_create( gray_input, k );
+  std::tie( gx, gy, u, v ) = AT_create( color_input, k );
   displaySize( "u", u );
   displaySize( "v", v );
   displaySize( "gx", gx );
@@ -357,7 +365,7 @@ int main( int argc, char* argv[] )
         double t = T.stopClock();
         compute = false;
         std::cout << " ... in " << t << " ms." << std::endl;
-        std::tie( gx, gy, u, v ) = AT_create( gray_input, k );
+        std::tie( gx, gy, u, v ) = AT_create( color_input, k );
         imshow("U", u);
         imshow("V", v);
       }
